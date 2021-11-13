@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
-import os
-import sys
 import numpy as np
-import tables as tb
-
 import pyqtgraph as pg
+from pyqtgraph.Qt import QtCore, QtGui
+# import pyqtgraph.console
 import pyqtgraph.dockarea as pqda
 from pyqtgraph.parametertree import Parameter, ParameterTree
+import tables as tb
+
+import sys
+import numpy as np
+
 from pyqtgraph.Qt import QtGui, QtCore
+import pyqtgraph as pg
 import pyqtgraph.widgets.RemoteGraphicsView
 
 
@@ -69,7 +73,7 @@ class FscvWin(QtGui.QMainWindow):
                 print('  ----------')
 
         #p.sigTreeStateChanged.connect(change)
-        p.param('Run', 'Start').sigActivated.connect(self.start_recording)
+        #p.param('Run', 'Start').sigActivated.connect(save)
         #p.param('Run', 'Stop').sigActivated.connect(restore)
         t = ParameterTree()
         t.setParameters(p, showTop=False)
@@ -94,22 +98,24 @@ class FscvWin(QtGui.QMainWindow):
         do_figures.addWidget(self.view)
 
         # Image View
-        #self.im_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
         #self.im_view.pg.setConfigOptions(antialias=True)  ## prettier plots at no cost to the main process!
         ### Create a PlotItem in the remote process that will be displayed locally
         #self.im_rplt = self.im_view.pg.ImageItem()
         #self.im_rplt._setProxyOptions(deferGetattr=True)  ## speeds up access to rplt.plot
         #self.im_view.setCentralItem(self.im_rplt)
-        #self.im_rplt = self.im_view.pg.ImageView()
 
         self.im_rplt = pg.ImageView()
         do_image.addWidget(self.im_rplt)
 
-        im_data = np.ones((100, 200)) * np.linspace(0, 100, 200)
-        self.im_rplt.setImage(im_data.T)#np.ascontiguousarray(im_data))
+        im_data = (np.ones((100, 200)) * np.linspace(0, 100, 200)).T
+        self.im_rplt.setImage(np.ascontiguousarray(im_data))
 
         self.lastUpdate = pg.ptime.time()
         self.avgFps = 0.0
+
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(100)
 
     def update(self):
         data = np.random.normal(size=(100, 50)).sum(axis=1)
@@ -117,37 +123,12 @@ class FscvWin(QtGui.QMainWindow):
 
         self.rplt.plot(data, clear=True, _callSync='off')
 
-        self.array_imgs.append(data[:, np.newaxis])
-
-        #self.im_rplt.setImage(self.array_imgs)#np.ascontiguousarray(im_data))
-        self.im_rplt.setImage(np.array(self.array_imgs))#np.ascontiguousarray(im_data))
-
-
         now = pg.ptime.time()
         fps = 1.0 / (now - self.lastUpdate)
         self.lastUpdate = now
         self.avgFps = self.avgFps * 0.8 + fps * 0.2
         self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
         #self.label.setText("Generating %0.2f fps" % self.avgFps)
-
-    def start_recording(self):
-        fln = "test.h5" #self.mtree.param('Filename').value() + '.h5'
-        dataroot = "." #self.mtree.param('Dataroot').value()
-        self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
-
-        a = tb.UInt8Atom()
-        H = 100
-        complevel = 5#np.int(self.mtree.param("BloscLevel").value())
-        filters = tb.Filters(complevel=complevel, complib='blosc')
-        array_imgs = self.fileh.create_earray(self.fileh.root, 'array_imgs', a,
-                                         (H, 0), "Imgs",
-                                         filters=filters,
-                                         expectedrows=500)
-        self.array_imgs = array_imgs
-
-        self.timer = QtCore.QTimer()
-        self.timer.timeout.connect(self.update)
-        self.timer.start(100)
 
 
 #app = pg.mkQApp()
