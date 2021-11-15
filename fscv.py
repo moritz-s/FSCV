@@ -76,14 +76,6 @@ class FscvWin(QtGui.QMainWindow):
         t.setWindowTitle('pyqtgraph example: Parameter Tree')
         do_cont.addWidget(t)
 
-        ############################## ##############################
-        #self.imv = pg.ImageView()
-        #self.himv = self.imv.getHistogramWidget()
-        ## self.himv.setYRange([0.0, 256.0])#, padding=0)
-        #self.himv.setHistogramRange(0, 256, padding=0.0)
-        #do_figures.addWidget(self.imv)
-
-        ############################## ##############################
 
         self.view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
         self.view.pg.setConfigOptions(antialias=True)  ## prettier plots at no cost to the main process!
@@ -94,6 +86,13 @@ class FscvWin(QtGui.QMainWindow):
         do_figures.addWidget(self.view)
 
         # Image View
+        #self.imv = pg.ImageView()
+        #self.himv = self.imv.getHistogramWidget()
+        ## self.himv.setYRange([0.0, 256.0])#, padding=0)
+        #self.himv.setHistogramRange(0, 256, padding=0.0)
+        #do_figures.addWidget(self.imv)
+        #
+        # Remote (somwhow not working)
         #self.im_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
         #self.im_view.pg.setConfigOptions(antialias=True)  ## prettier plots at no cost to the main process!
         ### Create a PlotItem in the remote process that will be displayed locally
@@ -103,6 +102,7 @@ class FscvWin(QtGui.QMainWindow):
         #self.im_rplt = self.im_view.pg.ImageView()
 
         self.im_rplt = pg.ImageView()
+        self.im_rplt.view.setAspectLocked(False)
         do_image.addWidget(self.im_rplt)
 
         im_data = np.ones((100, 200)) * np.linspace(0, 100, 200)
@@ -110,6 +110,7 @@ class FscvWin(QtGui.QMainWindow):
 
         self.lastUpdate = pg.ptime.time()
         self.avgFps = 0.0
+        self.start_recording()
 
     def update(self):
         data = np.random.normal(size=(100, 50)).sum(axis=1)
@@ -117,10 +118,10 @@ class FscvWin(QtGui.QMainWindow):
 
         self.rplt.plot(data, clear=True, _callSync='off')
 
-        self.array_imgs.append(data[:, np.newaxis])
+        self.array_scans.append(data[:, np.newaxis])
 
         #self.im_rplt.setImage(self.array_imgs)#np.ascontiguousarray(im_data))
-        self.im_rplt.setImage(np.array(self.array_imgs))#np.ascontiguousarray(im_data))
+        self.im_rplt.setImage(np.array(self.array_scans))#np.ascontiguousarray(im_data))
 
 
         now = pg.ptime.time()
@@ -135,19 +136,17 @@ class FscvWin(QtGui.QMainWindow):
         dataroot = "." #self.mtree.param('Dataroot').value()
         self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
 
-        a = tb.UInt8Atom()
         H = 100
         complevel = 5#np.int(self.mtree.param("BloscLevel").value())
         filters = tb.Filters(complevel=complevel, complib='blosc')
-        array_imgs = self.fileh.create_earray(self.fileh.root, 'array_imgs', a,
-                                         (H, 0), "Imgs",
-                                         filters=filters,
-                                         expectedrows=500)
-        self.array_imgs = array_imgs
+        self.array_scans = self.fileh.create_earray(self.fileh.root, 'array_imgs', tb.FloatAtom(),
+                                              (H, 0), "Imgs",
+                                              filters=filters,
+                                              expectedrows=500)
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(100)
+        self.timer.start(10)
 
 
 #app = pg.mkQApp()
