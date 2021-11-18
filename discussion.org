@@ -1,0 +1,3 @@
+
+1. The rapid rising phase of the AP generates a local current, 
+which is measured with electrodes.
