@@ -3,15 +3,55 @@ Technical first ?
 
 
 *  experiment
-   %APs were generated and detected along the giant fibers of the earthworm.
+   %The collision sweep experiment provides a unique access .
+   A common experiment in a simple nerve chamber is the measurement of the
+   propagation velocity with extracellular electrodes. We additionally measure
+   the extracellular shape of the AP as a function of the delay between stimuli
+   from opposing ends. This reveals additional features that are informative
+   with respect to the process of AP annihilation, and those are available
+   without any further assumptions.
+   
+   If it is assumed that the AP does not change its shape while it is
+   propagating (stationary propagation), then the delay translates into a
+   displacement of the point of collision. This provides the spatial width of
+   the collision, it determines a length scale $\lambdastar$ related to the
+   width of the AP.
 
-   The collision sweep experiment provides a unique access to the process of AP annihilation.
-   We measure the extracellular shape of the AP as a function of the delay between simuli at opposing sites.
-   Thereby observed features, 
-   We use collision block experiments to access a characteristic length. 
-   parameter: why not do drug testing
+   The widely used length constant $\lambda$ corresponds to the steady state
+   limit of a current injection that is damped by membrane leak current. On the
+   fast timescales of nerve signaling the contribution of such a leak current is
+   negligible. However, if the leak current is neglected in a model then the
+   length $\lambda$ diverges, which clearly puts the usefulness of $\lambda$ in
+   question.
+   
+   In contrast, the length $\lambdastar$ corresponds to the AP, or more
+   precisely to the fast process of capacitive charging during AP propagation.
+   These length scales are not really related, when nerve signaling by APs is
+   investigated then $\lambdastar$ and not $\lambda$ is the length scale of
+   interest.
 
+   Note that such an additional observable can have versatile applications e.g.\
+   to characterize different types of nerves or to measure the effect of
+   chemical agents (drug testing). 
+   
+   We use this information to build models of the excitable membrane.
+   
 *  model
+   The access to $\lambdastar$ reduces the parameterspace for models of
+   excitable membranes. The first model we apply is the TM model, after the
+   propagation velocity and the length $\labdastar$ is determined, has only one
+   degree of freedom left, which is the total amplitude of the AP. The shape and
+   dynamic of the nerve signal is fully determined.
+
+   The TM model lacks a phase of repolarization, which can easily be added by an
+   ad-hock expression. An additional parameter is thereby introduced, which is
+   the repolarization timescale $\tau_R$. Again, the collision sweep measurement
+   puts the required constraints on the model so that for a given repolarization
+   expression we can precisely fit the timescale $\tau_R$.
+
+   (Another parameter for drug testing !?!)
+
+   The 
    Why n to the 4
    TM is the ultimate purity!
 
