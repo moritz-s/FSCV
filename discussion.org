@@ -3,7 +3,11 @@ Technical first ?
 
 
 *  experiment
-   APs were generated and detected along the giant fibers of the earthworm. The collision sweep experiment is 
+   %APs were generated and detected along the giant fibers of the earthworm.
+
+   The collision sweep experiment provides a unique access to the process of AP annihilation.
+   We measure the extracellular shape of the AP as a function of the delay between simuli at opposing sites.
+   Thereby observed features, 
    We use collision block experiments to access a characteristic length. 
    parameter: why not do drug testing
 
@@ -14,7 +18,7 @@ Technical first ?
    It is exactly the kinkiness of the HH.
    HH has an inherent falt in the sharpness of the transition.
 
-* Synapse
+*  Synapse
 
   geometry usw.. 
 
