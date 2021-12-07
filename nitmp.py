@@ -37,3 +37,15 @@ fs = 2000
 
 data = doWriteRead(out, fs)
 print(data.shape)
+
+
+def niRamp(B=100.0, Tbase=1.0, Tramp=1.0, fs = 100.0):
+    """ A ramp with pre and post baseline"""
+    uout = B/187.0
+    base = np.zeros(int(Tbase*fs))
+    ramp = np.linspace(0, uout, int(Tramp*fs))    
+    out = np.hstack([base,ramp,ramp[::-1],base])    
+    return doWriteRead(out, fs)
+
+    #times = np.linspace(0, len(data[0]), len(data[0]))/fs
+    #rret = savgol_filter(data[0],31,1)*2*np.pi*1e3/1400

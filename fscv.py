@@ -117,6 +117,14 @@ class FscvWin(QtGui.QMainWindow):
         self.avgFps = 0.0
         self.start_recording()
 
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_Space:
+            if self.p.param('Run').param('Start').opts['enabled']:
+                self.start_recording()
+        if event.key() == QtCore.Qt.Key_Q:
+            if self.p.param('Run').param('Stop').opts['enabled']:
+                self.stop_recording()
+
     def update(self):
         data = np.random.normal(size=(100, 50)).sum(axis=1)
         data += 5 * np.sin(np.linspace(0, 10, data.shape[0]))
@@ -211,7 +219,8 @@ def main(**kwargs):
 ## Start Qt event loop unless running in interactive mode or using pyside.
 if __name__ == '__main__':
     # Hide error from QMessageBox
-    os.environ["QT_LOGGING_RULES"] = "*.debug=false"
+    #os.environ["QT_LOGGING_RULES"] = "*.debug=false"
+    os.environ["QT_LOGGING_RULES"] = ''#*.debug=false;qt.qpa.*=false'
 
     #window, app = main()
     app = QtGui.QApplication(sys.argv)
