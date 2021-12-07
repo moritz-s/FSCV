@@ -118,7 +118,7 @@ class FscvWin(QtGui.QMainWindow):
 
         self.lastUpdate = time.perf_counter()
         self.avgFps = 0.0
-        self.start_recording()
+        #self.start_recording()
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Space:
@@ -139,11 +139,10 @@ class FscvWin(QtGui.QMainWindow):
         dataroot = "." #self.mtree.param('Dataroot').value()
         self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
 
-        H = 100
         complevel = 5#np.int(self.mtree.param("BloscLevel").value())
         filters = tb.Filters(complevel=complevel, complib='blosc')
         self.array_scans = self.fileh.create_earray(self.fileh.root, 'array_scans', tb.FloatAtom(),
-                                              (H, 0), "Scans",
+                                              (self.nTotal, 0), "Scans",
                                               filters=filters,
                                               expectedrows=500)
 
@@ -187,12 +186,27 @@ class FscvWin(QtGui.QMainWindow):
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(2000)
+        self.timer.start(500)
 
     def update(self):
-        data = np.random.normal(size=(100, 50)).sum(axis=1)
-        data += 5 * np.sin(np.linspace(0, 10, data.shape[0]))
+        # DAQStart
+        self.taskI.start()
+        self.taskO.start()
 
+        # Acquire data
+        data = np.zeros((3, self.nTotal))
+
+        self.reader.read_many_sample(data, nidaqmx.constants.READ_ALL_AVAILABLE, timeout=((2+self.nTotal) / self.fs))
+        time.sleep(0.005)
+
+        # Stop
+        self.taskI.stop()
+        self.taskO.stop()
+
+        #data = np.random.normal(size=(100, 50)).sum(axis=1)
+        #data += 5 * np.sin(np.linspace(0, 10, data.shape[0]))
+
+        data = data[0]
         self.rplt.plot(data, clear=True, _callSync='off')
 
         self.array_scans.append(data[:, np.newaxis])
@@ -211,25 +225,15 @@ class FscvWin(QtGui.QMainWindow):
         self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
         #self.label.setText("Generating %0.2f fps" % self.avgFps)
 
-        # DAQStart
-        self.taskI.start()
-        self.taskO.start()
-
-        # Acquire data
-        data = np.zeros((3, self.nTotal))
-
-        self.reader.read_many_sample(data, nidaqmx.constants.READ_ALL_AVAILABLE, timeout=((2+self.nTotal) / self.fs))
-        time.sleep(0.005)
-
-        # Stop
-        self.taskI.stop()
-        self.taskO.stop()
 
     def stop_recording(self):
         self.p.param('Run').param('Start').setOpts(enabled=True)
         self.p.param('Run').param('Stop').setOpts(enabled=False)
         self.timer.stop()
         self.fileh.close()
+
+        self.taskI.close()
+        self.taskO.close()
 
     def closeEvent(self, event):
         if 0:
@@ -284,13 +288,12 @@ if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
     window = FscvWin()
 
-
-    try:
-        window.show()
-        if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-            QtGui.QApplication.instance().exec_()
-    finally:
+    #try:
+    window.show()
+    if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+        QtGui.QApplication.instance().exec_()
+    #finally:
         # Stop
-        window.taskI.close()
-        window.taskO.close()
+        #window.taskI.close()
+        #window.taskO.close()
 
