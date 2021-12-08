@@ -212,7 +212,7 @@ class FscvWin(QtGui.QMainWindow):
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(500)
+        self.timer.start(200)
 
     def update(self):
         # DAQStart
