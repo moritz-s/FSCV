@@ -36,7 +36,7 @@ class FscvWin(QtGui.QMainWindow):
             {'name': 'Pulse config', 'type': 'group', 'children': [
                 {'name': 'U_0', 'type': 'float', 'value': -0.4, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
                  'suffix': 'V'},
-                {'name': 'U_1', 'type': 'float', 'value': -1.0, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
+                {'name': 'U_1', 'type': 'float', 'value': 1.0, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
                  'suffix': 'V'},
                 {'name': 'Pre ramp time', 'type': 'float', 'value': 1e-2, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
@@ -132,6 +132,45 @@ class FscvWin(QtGui.QMainWindow):
         """Prepare h5 storage
            Prepare NiDAQ
            Start Recording timer"""
+
+        # Prepare Pulse form
+        # TODO get from gui
+
+        #{'name': 'Pulse config', 'type': 'group', 'children': [
+        #    {'name': 'U_0', 'type': 'float', 'value': -0.4, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
+        #     'suffix': 'V'},
+        #    {'name': 'U_1', 'type': 'float', 'value': -1.0, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
+        #     'suffix': 'V'},
+        #    {'name': 'Pre ramp time', 'type': 'float', 'value': 1e-2, 'step': 1e-3, 'limits': (0, 1e3),
+        #     'siPrefix': True, 'suffix': 's'},
+        #    {'name': 'Total ramp time', 'type': 'float', 'value': 1e-2, 'step': 1e-3, 'limits': (0, 1e3),
+        #     'siPrefix': True, 'suffix': 's'},
+        #    {'name': 'Post ramp time', 'type': 'float', 'value': 8e-2, 'step': 1e-3, 'limits': (0, 1e3),
+        #     'siPrefix': True, 'suffix': 's'},
+
+        U_0 = self.p.param('Pulse config').param('U_0').value()
+        U_1 = self.p.param('Pulse config').param('U_1').value()
+        T_pre = self.p.param('Pulse config').param('Pre ramp time').value()
+        T_pulse = self.p.param('Pulse config').param('Total ramp time').value()
+        T_post = self.p.param('Pulse config').param('Post ramp time').value()
+        self.fs = 50000.0
+
+        #umax = 1.2
+        #umin = -0.4
+        #Tramp = 0.01
+        #Tbase = 0.1
+        #base = np.ones(int(Tbase * self.fs)) * umin
+        #ramp = np.linspace(umin, umax, int(Tramp * self.fs))
+        #out = 5.0 * np.hstack([ramp, ramp[::-1], base])
+        #self.nTotal = len(out)
+
+        base_pre = np.ones(int(T_pre * self.fs)) * U_0
+        base_post = np.ones(int(T_post * self.fs)) * U_0
+        ramp = np.linspace(U_0, U_1, int(T_pulse/2 * self.fs))
+        out = 5.0 * np.hstack([base_pre, ramp, ramp[::-1], base_post])
+        self.nTotal = len(out)
+
+        # GUI settings
         self.p.param('Run').param('Start').setOpts(enabled=False)
         self.p.param('Run').param('Stop').setOpts(enabled=True)
 
@@ -145,19 +184,6 @@ class FscvWin(QtGui.QMainWindow):
                                               (self.nTotal, 0), "Scans",
                                               filters=filters,
                                               expectedrows=500)
-
-
-        # TODO get from gui
-        umax = 1.2
-        umin = -0.4
-        Tramp = 0.01
-        Tbase = 0.1
-        self.fs = 20000.0
-
-        base = np.ones(int(Tbase * self.fs)) * umin
-        ramp = np.linspace(umin, umax, int(Tramp * self.fs))
-        out = 5.0 * np.hstack([ramp, ramp[::-1], base])
-        self.nTotal = len(out)
 
         taskI = nidaqmx.Task()
         taskO = nidaqmx.Task()
@@ -206,10 +232,10 @@ class FscvWin(QtGui.QMainWindow):
         #data = np.random.normal(size=(100, 50)).sum(axis=1)
         #data += 5 * np.sin(np.linspace(0, 10, data.shape[0]))
 
-        data = data[0]
-        self.rplt.plot(data, clear=True, _callSync='off')
+        self.rplt.plot(data[0], clear=True, _callSync='off')
+        self.rplt.plot(data[1], clear=True, _callSync='off')
 
-        self.array_scans.append(data[:, np.newaxis])
+        self.array_scans.append(data[1][:, np.newaxis])
 
         #self.im_rplt.setImage(self.array_imgs)#np.ascontiguousarray(im_data))
         self.im_rplt.setImage(np.array(self.array_scans), autoLevels = False,

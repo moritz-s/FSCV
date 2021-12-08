@@ -147,6 +147,7 @@ class FscvWin(QtGui.QMainWindow):
         self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
         #self.label.setText("Generating %0.2f fps" % self.avgFps)
 
+
     def start_recording(self):
         self.p.param('Run').param('Start').setOpts(enabled=False)
         self.p.param('Run').param('Stop').setOpts(enabled=True)
