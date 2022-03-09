@@ -184,6 +184,10 @@ class FscvWin(QtGui.QMainWindow):
                                               (self.nTotal, 0), "Scans",
                                               filters=filters,
                                               expectedrows=500)
+        self.array_command = self.fileh.create_earray(self.fileh.root, 'array_command', tb.FloatAtom(),
+                                                    (self.nTotal, 0), "Command",
+                                                    filters=filters,
+                                                    expectedrows=500)
 
         taskI = nidaqmx.Task()
         taskO = nidaqmx.Task()
@@ -235,6 +239,7 @@ class FscvWin(QtGui.QMainWindow):
         self.rplt.plot(data[0], clear=True, _callSync='off')
         self.rplt.plot(data[1], clear=True, _callSync='off')
 
+        self.array_command.append(data[0][:, np.newaxis])
         self.array_scans.append(data[1][:, np.newaxis])
 
         #self.im_rplt.setImage(self.array_imgs)#np.ascontiguousarray(im_data))
