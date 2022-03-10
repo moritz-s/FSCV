@@ -4,20 +4,34 @@ import sys
 import time
 import numpy as np
 import tables as tb
+from pathlib import Path
 
 import pyqtgraph as pg
 import pyqtgraph.dockarea as pqda
+import pyqtgraph.widgets.RemoteGraphicsView
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtGui, QtCore
-import pyqtgraph.widgets.RemoteGraphicsView
 
-import nidaqmx
-from nidaqmx import stream_writers  # Explicit import Required !
-from nidaqmx import stream_readers  # Explicit import Required !
+import labtools
+
+try:
+    import nidaqmx
+    from nidaqmx import stream_writers  # Explicit import Required !
+    from nidaqmx import stream_readers  # Explicit import Required !
+    REAL_DATA = True
+except ModuleNotFoundError:
+    REAL_DATA = False
+
+
 
 class FscvWin(QtGui.QMainWindow):
     """Main window for the FSCV measurement"""
     def __init__(self):
+        # Load config file
+        self.config = labtools.getConfig()
+        self.datapath = Path(self.config.get('datapath', fallback='data'))
+
+        # Build Gui
         QtGui.QMainWindow.__init__(self)
         area = self.area = pqda.DockArea()
         self.setCentralWidget(area)
@@ -33,7 +47,7 @@ class FscvWin(QtGui.QMainWindow):
         area.addDock(do_image, 'bottom', do_figures)
 
         params = [
-            {'name': 'Pulse config', 'type': 'group', 'children': [
+            {'name': 'Config', 'type': 'group', 'children': [
                 {'name': 'U_0', 'type': 'float', 'value': -0.4, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
                  'suffix': 'V'},
                 {'name': 'U_1', 'type': 'float', 'value': 1.0, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
@@ -44,7 +58,9 @@ class FscvWin(QtGui.QMainWindow):
                  'siPrefix': True, 'suffix': 's'},
                 {'name': 'Post ramp time', 'type': 'float', 'value': 8e-2, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
-            ]},
+                {'name': 'Sampling rate', 'type': 'float', 'value': 50e3, 'siPrefix': True, 'suffix': 'Hz'},
+            ]
+            },
             {'name': 'Run', 'type': 'group', 'children': [
                 {'name': 'Start', 'type': 'action'},
                 {'name': 'Stop', 'type': 'action', 'enabled': False},
@@ -53,9 +69,11 @@ class FscvWin(QtGui.QMainWindow):
             {'name': 'Monitor', 'type': 'group', 'children': [
                 {'name': 'Aquisition frequency', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
                  'readonly': True},
+                {'name': 'samples per scan', 'type': 'int',# 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
+                 'readonly': True},
             ]},
             {'name': 'DAQ', 'type': 'group', 'children': [
-                {'name': 'Database', 'type': 'str', 'value': '',
+                {'name': 'Database', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
                  'readonly': True},
             ]},
             ]
@@ -136,25 +154,13 @@ class FscvWin(QtGui.QMainWindow):
         # Prepare Pulse form
         # TODO get from gui
 
-        #{'name': 'Pulse config', 'type': 'group', 'children': [
-        #    {'name': 'U_0', 'type': 'float', 'value': -0.4, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
-        #     'suffix': 'V'},
-        #    {'name': 'U_1', 'type': 'float', 'value': -1.0, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
-        #     'suffix': 'V'},
-        #    {'name': 'Pre ramp time', 'type': 'float', 'value': 1e-2, 'step': 1e-3, 'limits': (0, 1e3),
-        #     'siPrefix': True, 'suffix': 's'},
-        #    {'name': 'Total ramp time', 'type': 'float', 'value': 1e-2, 'step': 1e-3, 'limits': (0, 1e3),
-        #     'siPrefix': True, 'suffix': 's'},
-        #    {'name': 'Post ramp time', 'type': 'float', 'value': 8e-2, 'step': 1e-3, 'limits': (0, 1e3),
-        #     'siPrefix': True, 'suffix': 's'},
-
-        U_0 = self.p.param('Pulse config').param('U_0').value()
-        U_1 = self.p.param('Pulse config').param('U_1').value()
-        T_pre = self.p.param('Pulse config').param('Pre ramp time').value()
-        T_pulse = self.p.param('Pulse config').param('Total ramp time').value()
-        T_post = self.p.param('Pulse config').param('Post ramp time').value()
-        self.fs = 50000.0
-
+        U_0 = self.p.param('Config').param('U_0').value()
+        U_1 = self.p.param('Config').param('U_1').value()
+        T_pre = self.p.param('Config').param('Pre ramp time').value()
+        T_pulse = self.p.param('Config').param('Total ramp time').value()
+        T_post = self.p.param('Config').param('Post ramp time').value()
+        #self.fs = 50000.0
+        self.fs = self.p.param('Config').param('Sampling rate').value()
         #umax = 1.2
         #umin = -0.4
         #Tramp = 0.01
@@ -169,6 +175,7 @@ class FscvWin(QtGui.QMainWindow):
         ramp = np.linspace(U_0, U_1, int(T_pulse/2 * self.fs))
         out = 5.0 * np.hstack([base_pre, ramp, ramp[::-1], base_post])
         self.nTotal = len(out)
+        self.p.param('Monitor').param('samples per scan').setValue(self.nTotal)
 
         # GUI settings
         self.p.param('Run').param('Start').setOpts(enabled=False)
@@ -188,50 +195,62 @@ class FscvWin(QtGui.QMainWindow):
                                                     (self.nTotal, 0), "Command",
                                                     filters=filters,
                                                     expectedrows=500)
+        if REAL_DATA:
+            taskI = nidaqmx.Task()
+            taskO = nidaqmx.Task()
 
-        taskI = nidaqmx.Task()
-        taskO = nidaqmx.Task()
+            # Configure out Channel
+            taskO.ao_channels.add_ao_voltage_chan("Dev2/ao0")
+            taskO.out_stream.regen_mode = nidaqmx.constants.RegenerationMode.ALLOW_REGENERATION
+            taskO.timing.cfg_samp_clk_timing(rate=self.fs,
+                                             sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                                             samps_per_chan=self.nTotal)
+            # Configure In Channels
+            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 0)
+            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 1)
+            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 2)
+            taskI.timing.cfg_samp_clk_timing(rate=self.fs,
+                                             sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                                             samps_per_chan=self.nTotal)
 
-        # Configure out Channel
-        taskO.ao_channels.add_ao_voltage_chan("Dev2/ao0")
-        taskO.out_stream.regen_mode = nidaqmx.constants.RegenerationMode.ALLOW_REGENERATION
-        taskO.timing.cfg_samp_clk_timing(rate=self.fs,
-                                         sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                         samps_per_chan=self.nTotal)
-        # Configure In Channels
-        taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 0)
-        taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 1)
-        taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 2)
-        taskI.timing.cfg_samp_clk_timing(rate=self.fs,
-                                         sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                         samps_per_chan=self.nTotal)
+            # create writer and reader
+            writer = nidaqmx.stream_writers.AnalogSingleChannelWriter(taskO.out_stream, auto_start=False)
+            writer.write_many_sample(out)
 
-        # create writer and reader
-        writer = nidaqmx.stream_writers.AnalogSingleChannelWriter(taskO.out_stream, auto_start=False)
-        writer.write_many_sample(out)
-
-        self.taskI = taskI
-        self.taskO = taskO
-        self.reader = nidaqmx.stream_readers.AnalogMultiChannelReader(taskI.in_stream)
+            self.taskI = taskI
+            self.taskO = taskO
+            self.reader = nidaqmx.stream_readers.AnalogMultiChannelReader(taskI.in_stream)
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(200)
 
     def update(self):
-        # DAQStart
-        self.taskI.start()
-        self.taskO.start()
+        if REAL_DATA:
+            # DAQStart
+            self.taskI.start()
+            self.taskO.start()
 
-        # Acquire data
-        data = np.zeros((3, self.nTotal))
+            # Acquire data
+            data = np.zeros((3, self.nTotal))
+            self.reader.read_many_sample(
+                    data, 
+                    nidaqmx.constants.READ_ALL_AVAILABLE,
+                    timeout=((2+self.nTotal) / self.fs))
 
-        self.reader.read_many_sample(data, nidaqmx.constants.READ_ALL_AVAILABLE, timeout=((2+self.nTotal) / self.fs))
-        time.sleep(0.005)
+            # Wait for acquisition to complete (possibly redundant)
+            time.sleep(0.005)
 
-        # Stop
-        self.taskI.stop()
-        self.taskO.stop()
+            # Stop
+            self.taskI.stop()
+            self.taskO.stop()
+        else:
+            # Delay as in real acquisition
+            time.sleep(0.005)
+
+            # Generate random data
+            data = np.random.normal(size=(3, self.nTotal))
+
 
         #data = np.random.normal(size=(100, 50)).sum(axis=1)
         #data += 5 * np.sin(np.linspace(0, 10, data.shape[0]))
@@ -263,8 +282,9 @@ class FscvWin(QtGui.QMainWindow):
         self.timer.stop()
         self.fileh.close()
 
-        self.taskI.close()
-        self.taskO.close()
+        if REAL_DATA:
+            self.taskI.close()
+            self.taskO.close()
 
     def closeEvent(self, event):
         if 0:
