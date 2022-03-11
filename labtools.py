@@ -28,7 +28,7 @@ def getNextFile(config, fileformatstring ="fscv%04i.h5"):
     for i in range(10):
         try:
             p = Path(day_path, fileformatstring % (i+i0) )
-            p.mkdir(parents=True)
+            #p.mkdir(parents=True)
             return p
         except FileExistsError:
             print('already exists: ', i, p)
