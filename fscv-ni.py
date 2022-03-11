@@ -10,7 +10,7 @@ import pyqtgraph as pg
 import pyqtgraph.dockarea as pqda
 import pyqtgraph.widgets.RemoteGraphicsView
 from pyqtgraph.parametertree import Parameter, ParameterTree
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
 import labtools
 
@@ -24,7 +24,7 @@ except ModuleNotFoundError:
 
 
 
-class FscvWin(QtGui.QMainWindow):
+class FscvWin(QtWidgets.QMainWindow):
     """Main window for the FSCV measurement"""
     def __init__(self):
         # Load config file
@@ -75,10 +75,8 @@ class FscvWin(QtGui.QMainWindow):
             {'name': 'DAQ', 'type': 'group', 'children': [
                 {'name': 'Data root', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
                  'readonly': True},
-            ]},
-            {'name': 'DAQ', 'type': 'group', 'children': [
-                {'name': 'Data file', 'type': 'str', 'value': '',
-                 'readonly': True},
+                #{'name': 'Data file', 'type': 'str', 'value': '',
+                # 'readonly': True},
             ]},
             ]
         ## Create tree of Parameter objects
@@ -188,7 +186,7 @@ class FscvWin(QtGui.QMainWindow):
         #fln = "test.h5" #self.mtree.param('Filename').value() + '.h5'
         #dataroot = "." #self.mtree.param('Dataroot').value()
         fln = labtools.getNextFile(self.config)
-        self.p.param('Monitor').param('Data file').setValue(fln.as_posix())
+        #self.p.param('DAQ').param('Data file').setValue(fln.as_posix())
 
         #self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
         self.fileh = tb.open_file(fln, mode='w')
@@ -344,7 +342,8 @@ if __name__ == '__main__':
     os.environ["QT_LOGGING_RULES"] = ''#*.debug=false;qt.qpa.*=false'
 
     #window, app = main()
-    app = QtGui.QApplication(sys.argv)
+    #app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     window = FscvWin()
 
     #try:
