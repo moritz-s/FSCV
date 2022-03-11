@@ -59,6 +59,7 @@ class FscvWin(QtWidgets.QMainWindow):
                 {'name': 'Post ramp time', 'type': 'float', 'value': 8e-2, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
                 {'name': 'Sampling rate', 'type': 'float', 'value': 50e3, 'siPrefix': True, 'suffix': 'Hz'},
+                {'name': 'Line scan period', 'type': 'float', 'value': 0.1, 'siPrefix': True, 'suffix': 's'},
             ]
             },
             {'name': 'Run', 'type': 'group', 'children': [
@@ -161,16 +162,8 @@ class FscvWin(QtWidgets.QMainWindow):
         T_pre = self.p.param('Config').param('Pre ramp time').value()
         T_pulse = self.p.param('Config').param('Total ramp time').value()
         T_post = self.p.param('Config').param('Post ramp time').value()
-        #self.fs = 50000.0
         self.fs = self.p.param('Config').param('Sampling rate').value()
-        #umax = 1.2
-        #umin = -0.4
-        #Tramp = 0.01
-        #Tbase = 0.1
-        #base = np.ones(int(Tbase * self.fs)) * umin
-        #ramp = np.linspace(umin, umax, int(Tramp * self.fs))
-        #out = 5.0 * np.hstack([ramp, ramp[::-1], base])
-        #self.nTotal = len(out)
+        line_scan_period = self.p.param('Config').param('Line scan period').value()
 
         base_pre = np.ones(int(T_pre * self.fs)) * U_0
         base_post = np.ones(int(T_post * self.fs)) * U_0
@@ -230,7 +223,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(200)
+        self.timer.start(line_scan_period*1e3)
 
     def update(self):
         if REAL_DATA:

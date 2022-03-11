@@ -23,18 +23,13 @@ def getNextFile(config, fileformatstring ="fscv%04i.h5"):
     day_path = Path(config['datapath'], time.strftime("%Y-%m-%d", time.localtime()))
     day_path.mkdir(parents=True, exist_ok=True)
 
+    # Find the next free filename (try 10 times)
     i0 = len(os.listdir(day_path))
-    print(i0)
     for i in range(10):
         try:
             p = Path(day_path, fileformatstring % (i+i0) )
-            #p.mkdir(parents=True)
             return p
         except FileExistsError:
             print('already exists: ', i, p)
+    # Too much mess in the storage folder
     raise
-        #, exist_ok = True
-    #Path(folder_name).mkdir(parents=True, exist_ok=True)
-
-# p = getNextFile()
-# print(p)
