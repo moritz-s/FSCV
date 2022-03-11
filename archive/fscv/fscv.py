@@ -4,34 +4,17 @@ import sys
 import time
 import numpy as np
 import tables as tb
-from pathlib import Path
 
 import pyqtgraph as pg
 import pyqtgraph.dockarea as pqda
-import pyqtgraph.widgets.RemoteGraphicsView
 from pyqtgraph.parametertree import Parameter, ParameterTree
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
-
-import labtools
-
-try:
-    import nidaqmx
-    from nidaqmx import stream_writers  # Explicit import Required !
-    from nidaqmx import stream_readers  # Explicit import Required !
-    REAL_DATA = True
-except ModuleNotFoundError:
-    REAL_DATA = False
+from pyqtgraph.Qt import QtGui, QtCore
+import pyqtgraph.widgets.RemoteGraphicsView
 
 
-
-class FscvWin(QtWidgets.QMainWindow):
+class FscvWin(QtGui.QMainWindow):
     """Main window for the FSCV measurement"""
     def __init__(self):
-        # Load config file
-        self.config = labtools.getConfig()
-        self.datapath = Path(self.config.get('datapath', fallback='data'))
-
-        # Build Gui
         QtGui.QMainWindow.__init__(self)
         area = self.area = pqda.DockArea()
         self.setCentralWidget(area)
@@ -47,10 +30,10 @@ class FscvWin(QtWidgets.QMainWindow):
         area.addDock(do_image, 'bottom', do_figures)
 
         params = [
-            {'name': 'Config', 'type': 'group', 'children': [
+            {'name': 'Pulse config', 'type': 'group', 'children': [
                 {'name': 'U_0', 'type': 'float', 'value': -0.4, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
                  'suffix': 'V'},
-                {'name': 'U_1', 'type': 'float', 'value': 1.0, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
+                {'name': 'U_1', 'type': 'float', 'value': -1.0, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
                  'suffix': 'V'},
                 {'name': 'Pre ramp time', 'type': 'float', 'value': 1e-2, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
@@ -58,10 +41,7 @@ class FscvWin(QtWidgets.QMainWindow):
                  'siPrefix': True, 'suffix': 's'},
                 {'name': 'Post ramp time', 'type': 'float', 'value': 8e-2, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
-                {'name': 'Sampling rate', 'type': 'float', 'value': 50e3, 'siPrefix': True, 'suffix': 'Hz'},
-                {'name': 'Line scan period', 'type': 'float', 'value': 0.1, 'siPrefix': True, 'suffix': 's'},
-            ]
-            },
+            ]},
             {'name': 'Run', 'type': 'group', 'children': [
                 {'name': 'Start', 'type': 'action'},
                 {'name': 'Stop', 'type': 'action', 'enabled': False},
@@ -70,13 +50,9 @@ class FscvWin(QtWidgets.QMainWindow):
             {'name': 'Monitor', 'type': 'group', 'children': [
                 {'name': 'Aquisition frequency', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
                  'readonly': True},
-                {'name': 'samples per scan', 'type': 'int',# 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
-                 'readonly': True},
             ]},
             {'name': 'DAQ', 'type': 'group', 'children': [
-                {'name': 'Data root', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
-                 'readonly': True},
-                {'name': 'Data file', 'type': 'str', 'value': '',
+                {'name': 'Database', 'type': 'str', 'value': '',
                  'readonly': True},
             ]},
             ]
@@ -139,7 +115,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
         self.lastUpdate = time.perf_counter()
         self.avgFps = 0.0
-        #self.start_recording()
+        self.start_recording()
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Space:
@@ -149,124 +125,20 @@ class FscvWin(QtWidgets.QMainWindow):
             if self.p.param('Run').param('Stop').opts['enabled']:
                 self.stop_recording()
 
-    def start_recording(self):
-        """Prepare h5 storage
-           Prepare NiDAQ
-           Start Recording timer"""
-
-        # Prepare Pulse form
-        # TODO get from gui
-
-        U_0 = self.p.param('Config').param('U_0').value()
-        U_1 = self.p.param('Config').param('U_1').value()
-        T_pre = self.p.param('Config').param('Pre ramp time').value()
-        T_pulse = self.p.param('Config').param('Total ramp time').value()
-        T_post = self.p.param('Config').param('Post ramp time').value()
-        self.fs = self.p.param('Config').param('Sampling rate').value()
-        line_scan_period = self.p.param('Config').param('Line scan period').value()
-
-        base_pre = np.ones(int(T_pre * self.fs)) * U_0
-        base_post = np.ones(int(T_post * self.fs)) * U_0
-        ramp = np.linspace(U_0, U_1, int(T_pulse/2 * self.fs))
-        out = 5.0 * np.hstack([base_pre, ramp, ramp[::-1], base_post])
-        self.nTotal = len(out)
-        self.p.param('Monitor').param('samples per scan').setValue(self.nTotal)
-
-        # GUI settings
-        self.p.param('Run').param('Start').setOpts(enabled=False)
-        self.p.param('Run').param('Stop').setOpts(enabled=True)
-
-        #fln = "test.h5" #self.mtree.param('Filename').value() + '.h5'
-        #dataroot = "." #self.mtree.param('Dataroot').value()
-        fln = labtools.getNextFile(self.config)
-        self.p.param('DAQ').param('Data file').setValue(fln.as_posix())
-
-        #self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
-        print(fln.absolute())
-        self.fileh = tb.open_file(fln.absolute().as_posix(), mode='w')
-
-        complevel = 5#np.int(self.mtree.param("BloscLevel").value())
-        filters = tb.Filters(complevel=complevel, complib='blosc')
-        self.array_scans = self.fileh.create_earray(self.fileh.root, 'array_scans', tb.FloatAtom(),
-                                              (self.nTotal, 0), "Scans",
-                                              filters=filters,
-                                              expectedrows=500)
-        self.array_command = self.fileh.create_earray(self.fileh.root, 'array_command', tb.FloatAtom(),
-                                                    (self.nTotal, 0), "Command",
-                                                    filters=filters,
-                                                    expectedrows=500)
-        if REAL_DATA:
-            taskI = nidaqmx.Task()
-            taskO = nidaqmx.Task()
-
-            # Configure out Channel
-            taskO.ao_channels.add_ao_voltage_chan("Dev2/ao0")
-            taskO.out_stream.regen_mode = nidaqmx.constants.RegenerationMode.ALLOW_REGENERATION
-            taskO.timing.cfg_samp_clk_timing(rate=self.fs,
-                                             sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                             samps_per_chan=self.nTotal)
-            # Configure In Channels
-            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 0)
-            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 1)
-            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 2)
-            taskI.timing.cfg_samp_clk_timing(rate=self.fs,
-                                             sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                             samps_per_chan=self.nTotal)
-
-            # create writer and reader
-            writer = nidaqmx.stream_writers.AnalogSingleChannelWriter(taskO.out_stream, auto_start=False)
-            writer.write_many_sample(out)
-
-            self.taskI = taskI
-            self.taskO = taskO
-            self.reader = nidaqmx.stream_readers.AnalogMultiChannelReader(taskI.in_stream)
-
-        self.timer = QtCore.QTimer()
-        self.timer.timeout.connect(self.update)
-        self.timer.start(line_scan_period*1e3)
-
     def update(self):
-        if REAL_DATA:
-            # DAQStart
-            self.taskI.start()
-            self.taskO.start()
+        data = np.random.normal(size=(100, 50)).sum(axis=1)
+        data += 5 * np.sin(np.linspace(0, 10, data.shape[0]))
 
-            # Acquire data
-            data = np.zeros((3, self.nTotal))
-            self.reader.read_many_sample(
-                    data, 
-                    nidaqmx.constants.READ_ALL_AVAILABLE,
-                    timeout=((2+self.nTotal) / self.fs))
+        self.rplt.plot(data, clear=True, _callSync='off')
 
-            # Wait for acquisition to complete (possibly redundant)
-            time.sleep(0.005)
-
-            # Stop
-            self.taskI.stop()
-            self.taskO.stop()
-        else:
-            # Delay as in real acquisition
-            time.sleep(0.005)
-
-            # Generate random data
-            data = np.random.normal(size=(3, self.nTotal))
-
-
-        #data = np.random.normal(size=(100, 50)).sum(axis=1)
-        #data += 5 * np.sin(np.linspace(0, 10, data.shape[0]))
-
-        self.rplt.plot(data[0], clear=True, _callSync='off')
-        self.rplt.plot(data[1], clear=True, _callSync='off')
-
-        self.array_command.append(data[0][:, np.newaxis])
-        self.array_scans.append(data[1][:, np.newaxis])
+        self.array_scans.append(data[:, np.newaxis])
 
         #self.im_rplt.setImage(self.array_imgs)#np.ascontiguousarray(im_data))
         self.im_rplt.setImage(np.array(self.array_scans), autoLevels = False,
-                              autoHistogramRange = False)#, autoRange = False)
+                     autoHistogramRange = False)#, autoRange = False)
         #np.ascontiguousarray(im_data))
         #self.imv.setImage(imgarr, autoLevels=False,
-        #                 autoHistogramRange=False, autoRange=False)
+         #                 autoHistogramRange=False, autoRange=False)
 
         now = time.perf_counter()
         fps = 1.0 / (now - self.lastUpdate)
@@ -276,18 +148,34 @@ class FscvWin(QtWidgets.QMainWindow):
         #self.label.setText("Generating %0.2f fps" % self.avgFps)
 
 
+    def start_recording(self):
+        self.p.param('Run').param('Start').setOpts(enabled=False)
+        self.p.param('Run').param('Stop').setOpts(enabled=True)
+
+        fln = "test.h5" #self.mtree.param('Filename').value() + '.h5'
+        dataroot = "." #self.mtree.param('Dataroot').value()
+        self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
+
+        H = 100
+        complevel = 5#np.int(self.mtree.param("BloscLevel").value())
+        filters = tb.Filters(complevel=complevel, complib='blosc')
+        self.array_scans = self.fileh.create_earray(self.fileh.root, 'array_scans', tb.FloatAtom(),
+                                              (H, 0), "Scans",
+                                              filters=filters,
+                                              expectedrows=500)
+
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(10)
+
     def stop_recording(self):
         self.p.param('Run').param('Start').setOpts(enabled=True)
         self.p.param('Run').param('Stop').setOpts(enabled=False)
         self.timer.stop()
         self.fileh.close()
 
-        if REAL_DATA:
-            self.taskI.close()
-            self.taskO.close()
-
     def closeEvent(self, event):
-        if 0:
+        if 1:
             reply = QtGui.QMessageBox.question(self, 'Message',
                                                "Are you sure to quit?",
                                                QtGui.QMessageBox.Yes,
@@ -336,16 +224,10 @@ if __name__ == '__main__':
     os.environ["QT_LOGGING_RULES"] = ''#*.debug=false;qt.qpa.*=false'
 
     #window, app = main()
-    #app = QtGui.QApplication(sys.argv)
-    app = QtWidgets.QApplication(sys.argv)
+    app = QtGui.QApplication(sys.argv)
     window = FscvWin()
-
-    #try:
     window.show()
+
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
-    #finally:
-        # Stop
-        #window.taskI.close()
-        #window.taskO.close()
 
