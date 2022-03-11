@@ -75,8 +75,8 @@ class FscvWin(QtWidgets.QMainWindow):
             {'name': 'DAQ', 'type': 'group', 'children': [
                 {'name': 'Data root', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
                  'readonly': True},
-                #{'name': 'Data file', 'type': 'str', 'value': '',
-                # 'readonly': True},
+                {'name': 'Data file', 'type': 'str', 'value': '',
+                 'readonly': True},
             ]},
             ]
         ## Create tree of Parameter objects
@@ -186,10 +186,11 @@ class FscvWin(QtWidgets.QMainWindow):
         #fln = "test.h5" #self.mtree.param('Filename').value() + '.h5'
         #dataroot = "." #self.mtree.param('Dataroot').value()
         fln = labtools.getNextFile(self.config)
-        #self.p.param('DAQ').param('Data file').setValue(fln.as_posix())
+        self.p.param('DAQ').param('Data file').setValue(fln.as_posix())
 
         #self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
-        self.fileh = tb.open_file(fln, mode='w')
+        print(fln.absolute())
+        self.fileh = tb.open_file(fln.absolute().as_posix(), mode='w')
 
         complevel = 5#np.int(self.mtree.param("BloscLevel").value())
         filters = tb.Filters(complevel=complevel, complib='blosc')
