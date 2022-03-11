@@ -65,7 +65,7 @@ class FscvWin(QtWidgets.QMainWindow):
             {'name': 'Run', 'type': 'group', 'children': [
                 {'name': 'Start', 'type': 'action'},
                 {'name': 'Stop', 'type': 'action', 'enabled': False},
-                {'name': 'Limit (N)', 'type': 'int', 'value': 0},
+                {'name': 'Total scans', 'type': 'int', 'value': 0},
             ]},
             {'name': 'Monitor', 'type': 'group', 'children': [
                 {'name': 'Aquisition frequency', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
@@ -74,28 +74,16 @@ class FscvWin(QtWidgets.QMainWindow):
                  'readonly': True},
             ]},
             {'name': 'DAQ', 'type': 'group', 'children': [
-                {'name': 'Data root', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
+                {'name': 'Data path', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
                  'readonly': True},
                 {'name': 'Data file', 'type': 'str', 'value': '',
                  'readonly': True},
+                {'name': 'Blosc compression level', 'type': 'int', 'value': 5,
+                        'limits': (0, 9)},
             ]},
             ]
         ## Create tree of Parameter objects
         self.p = p = Parameter.create(name='params', type='group', children=params)
-
-        ## If anything changes in the tree, print a message
-        def change(param, changes):
-            print("tree changes:")
-            for param, change, data in changes:
-                path = p.childPath(param)
-                if path is not None:
-                    childName = '.'.join(path)
-                else:
-                    childName = param.name()
-                print('  parameter: %s' % childName)
-                print('  change:    %s' % change)
-                print('  data:      %s' % str(data))
-                print('  ----------')
 
         #p.sigTreeStateChanged.connect(change)
         p.param('Run', 'Start').sigActivated.connect(self.start_recording)
@@ -155,7 +143,7 @@ class FscvWin(QtWidgets.QMainWindow):
            Start Recording timer"""
 
         # Prepare Pulse form
-        # TODO get from gui
+        # TODO save in file
 
         U_0 = self.p.param('Config').param('U_0').value()
         U_1 = self.p.param('Config').param('U_1').value()
@@ -164,6 +152,7 @@ class FscvWin(QtWidgets.QMainWindow):
         T_post = self.p.param('Config').param('Post ramp time').value()
         self.fs = self.p.param('Config').param('Sampling rate').value()
         line_scan_period = self.p.param('Config').param('Line scan period').value()
+        complevel = int(self.p.param('DAQ').param('Blosc compression level').value())
 
         base_pre = np.ones(int(T_pre * self.fs)) * U_0
         base_post = np.ones(int(T_post * self.fs)) * U_0
@@ -176,16 +165,16 @@ class FscvWin(QtWidgets.QMainWindow):
         self.p.param('Run').param('Start').setOpts(enabled=False)
         self.p.param('Run').param('Stop').setOpts(enabled=True)
 
-        #fln = "test.h5" #self.mtree.param('Filename').value() + '.h5'
-        #dataroot = "." #self.mtree.param('Dataroot').value()
-        fln = labtools.getNextFile(self.config)
-        self.p.param('DAQ').param('Data file').setValue(fln.as_posix())
+        datafile_path = labtools.getNextFile(self.config)
+        datafile_folder, datafile_name = os.path.split(datafile_path.absolute())
+        self.p.param('DAQ').param('Data path').setValue(datafile_folder)
+        self.p.param('DAQ').param('Data file').setValue(datafile_name)
 
-        #self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
-        print(fln.absolute())
-        self.fileh = tb.open_file(fln.absolute().as_posix(), mode='w')
+        print(datafile_path.absolute())
+        #self.fileh = tb.open_file(datafile_path.absolute().as_posix(), mode='w')
+        self.fileh = tb.open_file(datafile_path, mode='w')
 
-        complevel = 5#np.int(self.mtree.param("BloscLevel").value())
+        #complevel = 5#np.int(self.mtree.param("BloscLevel").value())
         filters = tb.Filters(complevel=complevel, complib='blosc')
         self.array_scans = self.fileh.create_earray(self.fileh.root, 'array_scans', tb.FloatAtom(),
                                               (self.nTotal, 0), "Scans",
@@ -195,6 +184,14 @@ class FscvWin(QtWidgets.QMainWindow):
                                                     (self.nTotal, 0), "Command",
                                                     filters=filters,
                                                     expectedrows=500)
+        gui_params = self.p.getValues()
+
+        for section in gui_params:
+            prms = gui_params[section][1]
+            for p in prms:
+                self.array_scans.attrs[p.replace(' ', '_')] = prms[p][0]
+
+
         if REAL_DATA:
             taskI = nidaqmx.Task()
             taskO = nidaqmx.Task()
@@ -223,7 +220,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(line_scan_period*1e3)
+        self.timer.start(int(line_scan_period*1e3))
 
     def update(self):
         if REAL_DATA:
@@ -251,10 +248,6 @@ class FscvWin(QtWidgets.QMainWindow):
             # Generate random data
             data = np.random.normal(size=(3, self.nTotal))
 
-
-        #data = np.random.normal(size=(100, 50)).sum(axis=1)
-        #data += 5 * np.sin(np.linspace(0, 10, data.shape[0]))
-
         self.rplt.plot(data[0], clear=True, _callSync='off')
         self.rplt.plot(data[1], clear=True, _callSync='off')
 
@@ -274,6 +267,10 @@ class FscvWin(QtWidgets.QMainWindow):
         self.avgFps = self.avgFps * 0.8 + fps * 0.2
         self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
         #self.label.setText("Generating %0.2f fps" % self.avgFps)
+        total_scans = self.p.param('Run').param('Total scans').value()
+        if total_scans != 0:
+            if self.array_scans.shape[1] >= total_scans:
+                self.stop_recording()
 
 
     def stop_recording(self):
