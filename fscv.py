@@ -150,6 +150,7 @@ class FscvWin(QtWidgets.QMainWindow):
         T_pre = self.p.param('Config').param('Pre ramp time').value()
         T_pulse = self.p.param('Config').param('Total ramp time').value()
         T_post = self.p.param('Config').param('Post ramp time').value()
+        n_lines_limit = self.p.param('Run').param('Total scans').value()
         self.fs = self.p.param('Config').param('Sampling rate').value()
         line_scan_period = self.p.param('Config').param('Line scan period').value()
         complevel = int(self.p.param('DAQ').param('Blosc compression level').value())
@@ -174,16 +175,24 @@ class FscvWin(QtWidgets.QMainWindow):
         #self.fileh = tb.open_file(datafile_path.absolute().as_posix(), mode='w')
         self.fileh = tb.open_file(datafile_path, mode='w')
 
+        if n_lines_limit == 0:
+            # No line limit given, guessing a reasonable total number of scans
+            expectedrows = 500
+        else:
+            expectedrows = n_lines_limit
+
+        self.array_ts = self.fileh.create_earray(self.fileh.root, 'array_ts', tb.FloatAtom(),
+                                           (1, 0), "Times", expectedrows=expectedrows)
         #complevel = 5#np.int(self.mtree.param("BloscLevel").value())
         filters = tb.Filters(complevel=complevel, complib='blosc')
         self.array_scans = self.fileh.create_earray(self.fileh.root, 'array_scans', tb.FloatAtom(),
                                               (self.nTotal, 0), "Scans",
                                               filters=filters,
-                                              expectedrows=500)
+                                                    expectedrows=expectedrows)
         self.array_command = self.fileh.create_earray(self.fileh.root, 'array_command', tb.FloatAtom(),
                                                     (self.nTotal, 0), "Command",
                                                     filters=filters,
-                                                    expectedrows=500)
+                                                      expectedrows=expectedrows)
         gui_params = self.p.getValues()
 
         for section in gui_params:
@@ -251,6 +260,8 @@ class FscvWin(QtWidgets.QMainWindow):
         self.rplt.plot(data[0], clear=True, _callSync='off')
         self.rplt.plot(data[1], clear=True, _callSync='off')
 
+        self.array_ts.append(np.array([time.time()])[np.newaxis])
+        #n = self.array_ts.shape[-1]
         self.array_command.append(data[0][:, np.newaxis])
         self.array_scans.append(data[1][:, np.newaxis])
 
@@ -267,9 +278,9 @@ class FscvWin(QtWidgets.QMainWindow):
         self.avgFps = self.avgFps * 0.8 + fps * 0.2
         self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
         #self.label.setText("Generating %0.2f fps" % self.avgFps)
-        total_scans = self.p.param('Run').param('Total scans').value()
-        if total_scans != 0:
-            if self.array_scans.shape[1] >= total_scans:
+        n_lines_limit = self.p.param('Run').param('Total scans').value()
+        if n_lines_limit != 0:
+            if self.array_scans.shape[1] >= n_lines_limit:
                 self.stop_recording()
 
 
