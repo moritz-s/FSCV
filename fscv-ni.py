@@ -73,7 +73,11 @@ class FscvWin(QtGui.QMainWindow):
                  'readonly': True},
             ]},
             {'name': 'DAQ', 'type': 'group', 'children': [
-                {'name': 'Database', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
+                {'name': 'Data root', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
+                 'readonly': True},
+            ]},
+            {'name': 'DAQ', 'type': 'group', 'children': [
+                {'name': 'Data file', 'type': 'str', 'value': '',
                  'readonly': True},
             ]},
             ]
@@ -181,9 +185,13 @@ class FscvWin(QtGui.QMainWindow):
         self.p.param('Run').param('Start').setOpts(enabled=False)
         self.p.param('Run').param('Stop').setOpts(enabled=True)
 
-        fln = "test.h5" #self.mtree.param('Filename').value() + '.h5'
-        dataroot = "." #self.mtree.param('Dataroot').value()
-        self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
+        #fln = "test.h5" #self.mtree.param('Filename').value() + '.h5'
+        #dataroot = "." #self.mtree.param('Dataroot').value()
+        fln = labtools.getNextFile(self.config)
+        self.p.param('Monitor').param('Data file').setValue(fln.as_posix())
+
+        #self.fileh = tb.open_file(os.path.join(dataroot, fln), mode='w')
+        self.fileh = tb.open_file(fln, mode='w')
 
         complevel = 5#np.int(self.mtree.param("BloscLevel").value())
         filters = tb.Filters(complevel=complevel, complib='blosc')
