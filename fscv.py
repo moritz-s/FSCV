@@ -20,6 +20,7 @@ try:
     from nidaqmx import stream_readers  # Explicit import Required !
     REAL_DATA = True
 except ModuleNotFoundError:
+    # If nidaqmx is not installed, random data is generated
     REAL_DATA = False
 
 
@@ -37,35 +38,34 @@ class FscvWin(QtWidgets.QMainWindow):
         self.setCentralWidget(area)
         self.resize(1200, 500)
         self.setWindowTitle('Campy')
+        control_gui_element = pqda.Dock("Control", size=(150, 400))
+        scan_view_gui_element = pqda.Dock("Scan view", size=(500, 400))
+        image_view_gui_element = pqda.Dock("Image view", size=(500, 400))
+        area.addDock(control_gui_element)
+        area.addDock(scan_view_gui_element, 'right', control_gui_element)
+        area.addDock(image_view_gui_element, 'bottom', scan_view_gui_element)
 
-        do_cont = pqda.Dock("Control", size=(150, 400))
-        do_figures = pqda.Dock("Trace view", size=(500, 400))
-        do_image = pqda.Dock("Image view", size=(500, 400))
-
-        area.addDock(do_cont)
-        area.addDock(do_figures, 'right', do_cont)
-        area.addDock(do_image, 'bottom', do_figures)
-
-        params = [
+        # Configuration and Controll is done with a Parameter Tree object.
+        gui_parameter_dict = [
             {'name': 'Config', 'type': 'group', 'children': [
                 {'name': 'U_0', 'type': 'float', 'value': -0.4, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
                  'suffix': 'V'},
                 {'name': 'U_1', 'type': 'float', 'value': 1.0, 'step': 1e-2, 'limits': (-2, 2), 'siPrefix': True,
                  'suffix': 'V'},
-                {'name': 'Pre ramp time', 'type': 'float', 'value': 1e-2, 'step': 1e-3, 'limits': (0, 1e3),
+                {'name': 'Pre ramp time', 'type': 'float', 'value': 5e-3, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
-                {'name': 'Total ramp time', 'type': 'float', 'value': 1e-2, 'step': 1e-3, 'limits': (0, 1e3),
+                {'name': 'Total ramp time', 'type': 'float', 'value': 10e-3, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
-                {'name': 'Post ramp time', 'type': 'float', 'value': 8e-2, 'step': 1e-3, 'limits': (0, 1e3),
+                {'name': 'Post ramp time', 'type': 'float', 'value': 5e-3, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
-                {'name': 'Sampling rate', 'type': 'float', 'value': 50e3, 'siPrefix': True, 'suffix': 'Hz'},
+                {'name': 'Sampling rate', 'type': 'float', 'value': 10e3, 'siPrefix': True, 'suffix': 'Hz'},
                 {'name': 'Line scan period', 'type': 'float', 'value': 0.1, 'siPrefix': True, 'suffix': 's'},
-            ]
-            },
+            ]},
             {'name': 'Run', 'type': 'group', 'children': [
                 {'name': 'Start', 'type': 'action'},
                 {'name': 'Stop', 'type': 'action', 'enabled': False},
-                {'name': 'Total scans', 'type': 'int', 'value': 0},
+                {'name': 'N scans limit', 'type': 'int', 'value': 0},
+                {'name': 'N scans acquired', 'type': 'int', 'value': 0, 'readonly': True},
             ]},
             {'name': 'Monitor', 'type': 'group', 'children': [
                 {'name': 'Aquisition frequency', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
@@ -82,54 +82,55 @@ class FscvWin(QtWidgets.QMainWindow):
                         'limits': (0, 9)},
             ]},
             ]
-        ## Create tree of Parameter objects
-        self.p = p = Parameter.create(name='params', type='group', children=params)
 
-        #p.sigTreeStateChanged.connect(change)
+        ## Create tree of Parameter objects
+        self.p = p = Parameter.create(name='gui_parameter_dict', type='group', children=gui_parameter_dict)
+
+        # Connect the GUI Buttons to its functions
         p.param('Run', 'Start').sigActivated.connect(self.start_recording)
         p.param('Run', 'Stop').sigActivated.connect(self.stop_recording)
-        t = ParameterTree()
-        t.setParameters(p, showTop=False)
-        t.setWindowTitle('pyqtgraph example: Parameter Tree')
-        do_cont.addWidget(t)
+
+        # Add parameter gui element
+        parameter_gui_element = ParameterTree()
+        parameter_gui_element.setParameters(p, showTop=False)
+        parameter_gui_element.setWindowTitle('pyqtgraph example: Parameter Tree')
+        control_gui_element.addWidget(parameter_gui_element)
 
 
+        # Set up plotting with multithreading
         self.view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
-        self.view.pg.setConfigOptions(antialias=True)  ## prettier plots at no cost to the main process!
-        ## Create a PlotItem in the remote process that will be displayed locally
-        self.rplt = self.view.pg.PlotItem()
-        self.rplt._setProxyOptions(deferGetattr=True)  ## speeds up access to rplt.plot
-        self.view.setCentralItem(self.rplt)
-        do_figures.addWidget(self.view)
+        # Prettier plots at no cost to the main process!
+        self.view.pg.setConfigOptions(antialias=True) ## Create a PlotItem in the remote process that will be displayed locally
+        self.remote_line_plot = self.view.pg.PlotItem()
+        self.remote_line_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to remote_line_plot.plot
+        self.view.setCentralItem(self.remote_line_plot)
+        # add plot to the GUI
+        scan_view_gui_element.addWidget(self.view)
 
-        # Image View
+        # Image View Remote (somwhow not working)
         #self.imv = pg.ImageView()
         #self.himv = self.imv.getHistogramWidget()
         ## self.himv.setYRange([0.0, 256.0])#, padding=0)
         #self.himv.setHistogramRange(0, 256, padding=0.0)
-        #do_figures.addWidget(self.imv)
-        #
-        # Remote (somwhow not working)
+        #scan_view_gui_element.addWidget(self.imv)
         #self.im_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
         #self.im_view.pg.setConfigOptions(antialias=True)  ## prettier plots at no cost to the main process!
         ### Create a PlotItem in the remote process that will be displayed locally
-        #self.im_rplt = self.im_view.pg.ImageItem()
-        #self.im_rplt._setProxyOptions(deferGetattr=True)  ## speeds up access to rplt.plot
-        #self.im_view.setCentralItem(self.im_rplt)
-        #self.im_rplt = self.im_view.pg.ImageView()
+        #self.im_plot = self.im_view.pg.ImageItem()
+        #self.im_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to remote_line_plot.plot
+        #self.im_view.setCentralItem(self.im_plot)
+        #self.im_plot = self.im_view.pg.ImageView()
 
-        self.im_rplt = pg.ImageView()
-        self.im_rplt.view.setAspectLocked(False)
-        do_image.addWidget(self.im_rplt)
+        # Create basic image plot
+        self.im_plot = pg.ImageView()
+        self.im_plot.view.setAspectLocked(False)
+        image_view_gui_element.addWidget(self.im_plot)
+        im_data = np.ones((100, 200)) * np.linspace(-5, 5, 200)
+        self.im_plot.setImage(im_data.T)
 
-        im_data = np.ones((100, 200)) * np.linspace(0, 100, 200)
-        self.im_rplt.setImage(im_data.T)#np.ascontiguousarray(im_data))
-
-        self.lastUpdate = time.perf_counter()
-        self.avgFps = 0.0
-        #self.start_recording()
 
     def keyPressEvent(self, event):
+        # Pressing SPACE starts the measurement, q stops
         if event.key() == QtCore.Qt.Key_Space:
             if self.p.param('Run').param('Start').opts['enabled']:
                 self.start_recording()
@@ -138,33 +139,34 @@ class FscvWin(QtWidgets.QMainWindow):
                 self.stop_recording()
 
     def start_recording(self):
-        """Prepare h5 storage
-           Prepare NiDAQ
-           Start Recording timer"""
+        """ This function starts a new recording. h5 storage, NiDAQ and the
+        recording timer are inititalized"""
 
-        # Prepare Pulse form
-        # TODO save in file
-
+        # Read GUI values
         U_0 = self.p.param('Config').param('U_0').value()
         U_1 = self.p.param('Config').param('U_1').value()
         T_pre = self.p.param('Config').param('Pre ramp time').value()
         T_pulse = self.p.param('Config').param('Total ramp time').value()
         T_post = self.p.param('Config').param('Post ramp time').value()
-        n_lines_limit = self.p.param('Run').param('Total scans').value()
+        n_scans_limit = self.p.param('Run').param('N scans limit').value()
         self.fs = self.p.param('Config').param('Sampling rate').value()
         line_scan_period = self.p.param('Config').param('Line scan period').value()
         complevel = int(self.p.param('DAQ').param('Blosc compression level').value())
 
+        # Update Gui state
+        self.p.param('Run').param('Start').setOpts(enabled=False)
+        self.p.param('Run').param('Stop').setOpts(enabled=True)
+
+        # Prepare Pulse form
         base_pre = np.ones(int(T_pre * self.fs)) * U_0
         base_post = np.ones(int(T_post * self.fs)) * U_0
         ramp = np.linspace(U_0, U_1, int(T_pulse/2 * self.fs))
         out = 5.0 * np.hstack([base_pre, ramp, ramp[::-1], base_post])
-        self.nTotal = len(out)
-        self.p.param('Monitor').param('samples per scan').setValue(self.nTotal)
+        self.samples_per_scan = len(out)
+        self.p.param('Monitor').param('samples per scan').setValue(
+            self.samples_per_scan)
 
-        # GUI settings
-        self.p.param('Run').param('Start').setOpts(enabled=False)
-        self.p.param('Run').param('Stop').setOpts(enabled=True)
+        self.avgFps = 1/line_scan_period
 
         datafile_path = labtools.getNextFile(self.config)
         datafile_folder, datafile_name = os.path.split(datafile_path.absolute())
@@ -175,32 +177,45 @@ class FscvWin(QtWidgets.QMainWindow):
         #self.fileh = tb.open_file(datafile_path.absolute().as_posix(), mode='w')
         self.fileh = tb.open_file(datafile_path, mode='w')
 
-        if n_lines_limit == 0:
+        if n_scans_limit == 0:
             # No line limit given, guessing a reasonable total number of scans
             expectedrows = 500
         else:
-            expectedrows = n_lines_limit
+            expectedrows = n_scans_limit
 
-        self.array_ts = self.fileh.create_earray(self.fileh.root, 'array_ts', tb.FloatAtom(),
-                                           (1, 0), "Times", expectedrows=expectedrows)
-        #complevel = 5#np.int(self.mtree.param("BloscLevel").value())
+        # Array that holds timestanps for each scan
+        self.array_ts = self.fileh.create_earray(self.fileh.root,
+                                                 'array_ts',
+                                                 tb.FloatAtom(),
+                                                 (1, 0),
+                                                 "Times",
+                                                 expectedrows=expectedrows)
+
+        # Recorded preamp output
         filters = tb.Filters(complevel=complevel, complib='blosc')
-        self.array_scans = self.fileh.create_earray(self.fileh.root, 'array_scans', tb.FloatAtom(),
-                                              (self.nTotal, 0), "Scans",
-                                              filters=filters,
+        self.array_scans = self.fileh.create_earray(self.fileh.root,
+                                                    'array_scans',
+                                                    tb.FloatAtom(),
+                                                    (self.samples_per_scan, 0),
+                                                    "Scans", filters=filters,
                                                     expectedrows=expectedrows)
-        self.array_command = self.fileh.create_earray(self.fileh.root, 'array_command', tb.FloatAtom(),
-                                                    (self.nTotal, 0), "Command",
-                                                    filters=filters,
+        # Recorded command voltage
+        self.array_command = self.fileh.create_earray(self.fileh.root,
+                                                      'array_command',
+                                                      tb.FloatAtom(),
+                                                      (self.samples_per_scan, 0),
+                                                      "Command",
+                                                      filters=filters,
                                                       expectedrows=expectedrows)
+        # Store all GUI values in datafile
         gui_params = self.p.getValues()
-
         for section in gui_params:
             prms = gui_params[section][1]
             for p in prms:
                 self.array_scans.attrs[p.replace(' ', '_')] = prms[p][0]
 
 
+        # Acquire data
         if REAL_DATA:
             taskI = nidaqmx.Task()
             taskO = nidaqmx.Task()
@@ -210,14 +225,14 @@ class FscvWin(QtWidgets.QMainWindow):
             taskO.out_stream.regen_mode = nidaqmx.constants.RegenerationMode.ALLOW_REGENERATION
             taskO.timing.cfg_samp_clk_timing(rate=self.fs,
                                              sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                             samps_per_chan=self.nTotal)
+                                             samps_per_chan=self.samples_per_scan)
             # Configure In Channels
             taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 0)
             taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 1)
             taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 2)
             taskI.timing.cfg_samp_clk_timing(rate=self.fs,
                                              sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                             samps_per_chan=self.nTotal)
+                                             samps_per_chan=self.samples_per_scan)
 
             # create writer and reader
             writer = nidaqmx.stream_writers.AnalogSingleChannelWriter(taskO.out_stream, auto_start=False)
@@ -230,19 +245,22 @@ class FscvWin(QtWidgets.QMainWindow):
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(int(line_scan_period*1e3))
+        self.lastUpdate = time.perf_counter()
 
     def update(self):
+        """This is the central function that is called in a loop. Data is
+        acquired and shown in the GUI"""
         if REAL_DATA:
             # DAQStart
             self.taskI.start()
             self.taskO.start()
 
             # Acquire data
-            data = np.zeros((3, self.nTotal))
+            data = np.zeros((3, self.samples_per_scan))
             self.reader.read_many_sample(
-                    data, 
+                    data,
                     nidaqmx.constants.READ_ALL_AVAILABLE,
-                    timeout=((2+self.nTotal) / self.fs))
+                    timeout=((2+self.samples_per_scan) / self.fs))
 
             # Wait for acquisition to complete (possibly redundant)
             time.sleep(0.005)
@@ -255,36 +273,42 @@ class FscvWin(QtWidgets.QMainWindow):
             time.sleep(0.005)
 
             # Generate random data
-            data = np.random.normal(size=(3, self.nTotal))
+            data = np.random.normal(size=(3, self.samples_per_scan))
 
-        self.rplt.plot(data[0], clear=True, _callSync='off')
-        self.rplt.plot(data[1], clear=True, _callSync='off')
 
+        # Append new data to data storage
         self.array_ts.append(np.array([time.time()])[np.newaxis])
-        #n = self.array_ts.shape[-1]
         self.array_command.append(data[0][:, np.newaxis])
         self.array_scans.append(data[1][:, np.newaxis])
 
-        #self.im_rplt.setImage(self.array_imgs)#np.ascontiguousarray(im_data))
-        self.im_rplt.setImage(np.array(self.array_scans), autoLevels = False,
-                              autoHistogramRange = False)#, autoRange = False)
-        #np.ascontiguousarray(im_data))
-        #self.imv.setImage(imgarr, autoLevels=False,
-        #                 autoHistogramRange=False, autoRange=False)
+        # Plot single recording
+        self.remote_line_plot.plot(data[1], clear=True, _callSync='off')
+        #self.remote_line_plot.plot(data[0], clear=True, _callSync='off')
 
+        # Plot image
+        self.im_plot.setImage(np.array(self.array_scans)[-500:], autoLevels = False,
+                              autoHistogramRange = False)#, autoRange = False)
+
+        # Calculate show sampling frequency
         now = time.perf_counter()
         fps = 1.0 / (now - self.lastUpdate)
         self.lastUpdate = now
-        self.avgFps = self.avgFps * 0.8 + fps * 0.2
+        self.avgFps = self.avgFps * 0.9 + fps * 0.1
         self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
-        #self.label.setText("Generating %0.2f fps" % self.avgFps)
-        n_lines_limit = self.p.param('Run').param('Total scans').value()
-        if n_lines_limit != 0:
-            if self.array_scans.shape[1] >= n_lines_limit:
+
+        # Update GUI values
+        n_scans = self.array_ts.shape[-1]
+        self.p.param('Run').param('N scans acquired').setValue(n_scans)
+
+        # Check if measurement is finished
+        n_scans_limit = self.p.param('Run').param('N scans limit').value()
+        if n_scans_limit != 0:
+            if self.n_scans >= n_scans_limit:
                 self.stop_recording()
 
 
     def stop_recording(self):
+        """Stop the recording: Update GUI, close file and stop DAQ"""
         self.p.param('Run').param('Start').setOpts(enabled=True)
         self.p.param('Run').param('Stop').setOpts(enabled=False)
         self.timer.stop()
@@ -295,56 +319,18 @@ class FscvWin(QtWidgets.QMainWindow):
             self.taskO.close()
 
     def closeEvent(self, event):
-        if 0:
-            reply = QtGui.QMessageBox.question(self, 'Message',
-                                               "Are you sure to quit?",
-                                               QtGui.QMessageBox.Yes,
-                                               QtGui.QMessageBox.No)
-            if reply == QtGui.QMessageBox.No:
-                event.ignore()
-                return
-
+        """Window is beeing closed: stop measurement if it is running"""
         if self.p.param('Run').param('Stop').opts['enabled']:
             self.stop_recording()
-        #self.timer.stop()
+
         self.view.close()
-        #self.camera.StopGrabbing()
-        # camera has to be closed manually
-        #self.camera.Close()
         event.accept()
 
-#app = pg.mkQApp()
-#window = FscvWin()
-#app.references.add(window)
-#window.show()
-
-
-def main(**kwargs):
-    """Create a QT window in Python, or interactively in IPython with QT GUI
-    event loop integration.
-    """
-    app_created = False
-    app = QtCore.QCoreApplication.instance()
-    if  app is None:
-        print(12321)
-        app = QtGui.QApplication(sys.argv)
-        app_created = True
-    app.references = set()
-    window = FscvWin(**kwargs)
-    app.references.add(window)
-    window.show()
-    if app_created:
-        app.exec_()
-    return window, app
 
 ## Start Qt event loop unless running in interactive mode or using pyside.
 if __name__ == '__main__':
     # Hide error from QMessageBox
-    #os.environ["QT_LOGGING_RULES"] = "*.debug=false"
-    os.environ["QT_LOGGING_RULES"] = ''#*.debug=false;qt.qpa.*=false'
-
-    #window, app = main()
-    #app = QtGui.QApplication(sys.argv)
+    # os.environ["QT_LOGGING_RULES"] = ''#*.debug=false;qt.qpa.*=false'
     app = QtWidgets.QApplication(sys.argv)
     window = FscvWin()
 
@@ -356,4 +342,3 @@ if __name__ == '__main__':
         # Stop
         #window.taskI.close()
         #window.taskO.close()
-

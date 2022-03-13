@@ -2,7 +2,6 @@
 import os
 import time
 import configparser
-import socket
 from pathlib import Path
 
 def getConfig():
@@ -12,11 +11,12 @@ def getConfig():
     general_config = configparser.ConfigParser()
     general_config['DEFAULT']['datapath'] = 'data'
     general_config.read("config.ini")
-    hostname = socket.gethostname()
-    try:
-        return general_config[hostname]
-    except KeyError:
-        return general_config['DEFAULT']
+    # Generate a config file if it doesnt exist
+    if not Path('config.ini').is_file():
+        with open('config.ini', 'w') as configfile:
+            general_config.write(configfile)
+
+    return general_config['DEFAULT']
 
 def getNextFile(config, fileformatstring ="fscv%04i.h5"):
     # get today's folder
