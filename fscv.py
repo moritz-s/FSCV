@@ -37,7 +37,7 @@ class FscvWin(QtWidgets.QMainWindow):
         area = self.area = pqda.DockArea()
         self.setCentralWidget(area)
         self.resize(1200, 500)
-        self.setWindowTitle('Campy')
+        self.setWindowTitle('FSCV')
         control_gui_element = pqda.Dock("Control", size=(150, 400))
         scan_view_gui_element = pqda.Dock("Scan view", size=(500, 400))
         image_view_gui_element = pqda.Dock("Image view", size=(500, 400))
