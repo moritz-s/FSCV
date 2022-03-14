@@ -45,7 +45,8 @@ class Widget(QWidget):
         data_filename = os.path.join(self.datapath, self.selected_path, index.data())
         data_file = tb.open_file(data_filename)
         dat = data_file.root.array_scans
-        pg.image(np.array(dat))
+        img_view = pg.image(np.array(dat))
+        img_view.view.setAspectLocked(False)
 
 
 if __name__ == '__main__':
