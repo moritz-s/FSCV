@@ -12,4 +12,5 @@ Lab-Computer:
  - pyqtgraph=0.12.3
  - pytables=3.6.1
  - nidaqmx-python=0.5.7
+
 (see also environment.yml, but note that this contains quite an overhead, like pypylon for Basler cameras etc.)
