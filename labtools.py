@@ -5,9 +5,9 @@ import configparser
 from pathlib import Path
 
 def getConfig():
-    """Reads a hostname specific config section in the config.ini file.
-    If the hostname section does not exist, the DEFAULT section is returned.
-    If the config.ini file does not exist, a default config is returned """
+    """Reads values from a config.ini file. The DEFAULT section is returned.
+    If the config.ini file does not exist, it is created and a default config
+    is returned """
     general_config = configparser.ConfigParser()
     general_config['DEFAULT']['datapath'] = 'data'
     general_config.read("config.ini")
