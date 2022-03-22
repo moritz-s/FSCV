@@ -148,7 +148,7 @@ class FscvWin(QtWidgets.QMainWindow):
         T_pre = self.p.param('Config').param('Pre ramp time').value()
         T_pulse = self.p.param('Config').param('Total ramp time').value()
         T_post = self.p.param('Config').param('Post ramp time').value()
-        n_scans_limit = self.p.param('Run').param('N scans limit').value()
+        self.n_scans = n_scans_limit = self.p.param('Run').param('N scans limit').value()
         self.fs = self.p.param('Config').param('Sampling rate').value()
         line_scan_period = self.p.param('Config').param('Line scan period').value()
         complevel = int(self.p.param('DAQ').param('Blosc compression level').value())
@@ -297,13 +297,13 @@ class FscvWin(QtWidgets.QMainWindow):
         self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
 
         # Update GUI values
-        n_scans = self.array_ts.shape[-1]
-        self.p.param('Run').param('N scans acquired').setValue(n_scans)
+        n_scans_acquired = self.array_ts.shape[-1]
+        self.p.param('Run').param('N scans acquired').setValue(n_scans_acquired)
 
         # Check if measurement is finished
-        n_scans_limit = self.p.param('Run').param('N scans limit').value()
-        if n_scans_limit != 0:
-            if self.n_scans >= n_scans_limit:
+        #n_scans_limit = self.p.param('Run').param('N scans limit').value()
+        if self.n_scans != 0:
+            if n_scans_acquired >= self.n_scans:
                 self.stop_recording()
 
 
