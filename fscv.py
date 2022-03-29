@@ -288,8 +288,8 @@ class FscvWin(QtWidgets.QMainWindow):
         #self.remote_line_plot.plot(data[0], clear=True, _callSync='off')
 
         # Plot image
-        self.im_plot.setImage(np.array(self.array_scans)[-500:], autoLevels = False,
-                              autoHistogramRange = False)#, autoRange = False)
+        self.im_plot.setImage(np.array(self.array_scans)[-50:], autoLevels = False,
+                              autoHistogramRange = False, autoRange = False)
 
         # Calculate show sampling frequency
         now = time.perf_counter()
