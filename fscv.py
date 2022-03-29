@@ -56,9 +56,9 @@ class FscvWin(QtWidgets.QMainWindow):
                  'siPrefix': True, 'suffix': 's'},
                 {'name': 'Total ramp time', 'type': 'float', 'value': 10e-3, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
-                {'name': 'Post ramp time', 'type': 'float', 'value': 5e-3, 'step': 1e-3, 'limits': (0, 1e3),
+                {'name': 'Post ramp time', 'type': 'float', 'value': 10e-3, 'step': 1e-3, 'limits': (0, 1e3),
                  'siPrefix': True, 'suffix': 's'},
-                {'name': 'Sampling rate', 'type': 'float', 'value': 10e3, 'siPrefix': True, 'suffix': 'Hz'},
+                {'name': 'Sampling rate', 'type': 'float', 'value': 100e3, 'siPrefix': True, 'suffix': 'Hz'},
                 {'name': 'Line scan period', 'type': 'float', 'value': 0.1, 'siPrefix': True, 'suffix': 's'},
             ]},
             {'name': 'Run', 'type': 'group', 'children': [
@@ -227,9 +227,11 @@ class FscvWin(QtWidgets.QMainWindow):
                                              sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
                                              samps_per_chan=self.samples_per_scan)
             # Configure In Channels
-            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 0)
-            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 1)
-            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 2)
+            min_val = -10
+            max_val = 10
+            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 0, min_val=min_val, max_val=max_val)
+            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 1, min_val=min_val, max_val=max_val)
+            taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 2, min_val=min_val, max_val=max_val)
             taskI.timing.cfg_samp_clk_timing(rate=self.fs,
                                              sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
                                              samps_per_chan=self.samples_per_scan)
