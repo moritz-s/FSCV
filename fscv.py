@@ -68,6 +68,7 @@ class FscvWin(QtWidgets.QMainWindow):
                 {'name': 'N scans acquired', 'type': 'int', 'value': 0, 'readonly': True},
             ]},
             {'name': 'Monitor', 'type': 'group', 'children': [
+                {'name': 'Live waterfall', 'type': 'bool', 'value': True},
                 {'name': 'Aquisition frequency', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
                  'readonly': True},
                 {'name': 'samples per scan', 'type': 'int',# 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
@@ -288,8 +289,9 @@ class FscvWin(QtWidgets.QMainWindow):
         #self.remote_line_plot.plot(data[0], clear=True, _callSync='off')
 
         # Plot image
-        self.im_plot.setImage(np.array(self.array_scans)[-50:], autoLevels = False,
-                              autoHistogramRange = False, autoRange = False)
+        if self.p.param('Monitor').param('Live waterfall').value():
+            self.im_plot.setImage(np.array(self.array_scans)[-50:], autoLevels = False,
+                                autoHistogramRange = False, autoRange = False)
 
         # Calculate show sampling frequency
         now = time.perf_counter()
