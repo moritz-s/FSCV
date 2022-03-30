@@ -1,6 +1,7 @@
 # Custom
 .idea
 *.h5
+.#*
 config.ini
 
 # Preset

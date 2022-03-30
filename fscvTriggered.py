@@ -15,17 +15,6 @@ from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
 import labtools
 
-try:
-    import nidaqmx
-    from nidaqmx import stream_writers  # Explicit import Required !
-    from nidaqmx import stream_readers  # Explicit import Required !
-    REAL_DATA = True
-except ModuleNotFoundError:
-    # If nidaqmx is not installed, random data is generated
-    REAL_DATA = False
-
-
-
 class FscvWin(QtWidgets.QMainWindow):
     """Main window for the FSCV measurement"""
     def __init__(self):
@@ -39,12 +28,16 @@ class FscvWin(QtWidgets.QMainWindow):
         self.setCentralWidget(area)
         self.resize(1200, 500)
         self.setWindowTitle('FSCV')
-        control_gui_element = pqda.Dock("Control", size=(150, 400))
-        scan_view_gui_element = pqda.Dock("Scan view", size=(500, 400))
+        control_gui_element = pqda.Dock("Control", size=(250, 600))
+        current_view_gui_element = pqda.Dock("Scan view", size=(500, 400))
+        command_view_gui_element = pqda.Dock("Command view", size=(500, 400))
+        duck_view_gui_element = pqda.Dock("Duck view", size=(500, 400))
         image_view_gui_element = pqda.Dock("Image view", size=(500, 400))
         area.addDock(control_gui_element)
-        area.addDock(scan_view_gui_element, 'right', control_gui_element)
-        area.addDock(image_view_gui_element, 'bottom', scan_view_gui_element)
+        area.addDock(current_view_gui_element, 'right', control_gui_element)
+        area.addDock(command_view_gui_element, 'bottom', current_view_gui_element)
+        area.addDock(duck_view_gui_element, 'bottom', command_view_gui_element)
+        area.addDock(image_view_gui_element, 'bottom', duck_view_gui_element)
 
         # Configuration and Controll is done with a Parameter Tree object.
         gui_parameter_dict = [
@@ -70,8 +63,16 @@ class FscvWin(QtWidgets.QMainWindow):
                 {'name': 'N scans acquired', 'type': 'int', 'value': 0, 'readonly': True},
             ]},
             {'name': 'Monitor', 'type': 'group', 'children': [
+                {'name': 'GUI update period', 'type': 'float', 'value': 0.1,
+                         'siPrefix': True, 'suffix': 's', 'limits':(0.02, 1e2)},
                 {'name': 'Live waterfall', 'type': 'bool', 'value': True},
-                {'name': 'Aquisition frequency', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
+                {'name': 'Waterfall update period', 'type': 'float', 'value': 1,
+                         'siPrefix': True, 'suffix': 's', 'limits':(0.05, 1e2)},
+                {'name': 'Aquisition period', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 's',
+                 'readonly': True},
+                {'name': 'Aquisition period min', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 's',
+                 'readonly': True},
+                {'name': 'Aquisition period max', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 's',
                  'readonly': True},
                 #{'name': 'samples per scan', 'type': 'int',# 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
                 # 'readonly': True},
@@ -96,33 +97,32 @@ class FscvWin(QtWidgets.QMainWindow):
         # Add parameter gui element
         parameter_gui_element = ParameterTree()
         parameter_gui_element.setParameters(p, showTop=False)
-        parameter_gui_element.setWindowTitle('pyqtgraph example: Parameter Tree')
+        parameter_gui_element.setWindowTitle('FSCV Settings')
         control_gui_element.addWidget(parameter_gui_element)
 
 
         # Set up plotting with multithreading
-        self.view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
-        # Prettier plots at no cost to the main process!
-        self.view.pg.setConfigOptions(antialias=True) ## Create a PlotItem in the remote process that will be displayed locally
-        self.remote_line_plot = self.view.pg.PlotItem()
-        self.remote_line_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to remote_line_plot.plot
-        self.view.setCentralItem(self.remote_line_plot)
-        # add plot to the GUI
-        scan_view_gui_element.addWidget(self.view)
-
-        # Image View Remote (somwhow not working)
-        #self.imv = pg.ImageView()
-        #self.himv = self.imv.getHistogramWidget()
-        ## self.himv.setYRange([0.0, 256.0])#, padding=0)
-        #self.himv.setHistogramRange(0, 256, padding=0.0)
-        #scan_view_gui_element.addWidget(self.imv)
-        #self.im_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
-        #self.im_view.pg.setConfigOptions(antialias=True)  ## prettier plots at no cost to the main process!
-        ### Create a PlotItem in the remote process that will be displayed locally
-        #self.im_plot = self.im_view.pg.ImageItem()
-        #self.im_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to remote_line_plot.plot
-        #self.im_view.setCentralItem(self.im_plot)
-        #self.im_plot = self.im_view.pg.ImageView()
+        # Current
+        self.remote_current_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
+        self.remote_current_view.pg.setConfigOptions(antialias=True) ## Create a PlotItem in the remote process
+        self.remote_current_plot = self.remote_current_view.pg.PlotItem()
+        self.remote_current_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to plot
+        self.remote_current_view.setCentralItem(self.remote_current_plot)
+        current_view_gui_element.addWidget(self.remote_current_view)
+        # command
+        self.remote_command_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
+        self.remote_command_view.pg.setConfigOptions(antialias=True) ## Create a PlotItem in the remote process
+        self.remote_command_plot = self.remote_command_view.pg.PlotItem()
+        self.remote_command_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to plot
+        self.remote_command_view.setCentralItem(self.remote_command_plot)
+        command_view_gui_element.addWidget(self.remote_command_view)
+        # duck
+        self.remote_duck_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
+        self.remote_duck_view.pg.setConfigOptions(antialias=True) ## Create a PlotItem in the remote process
+        self.remote_duck_plot = self.remote_duck_view.pg.PlotItem()
+        self.remote_duck_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to plot
+        self.remote_duck_view.setCentralItem(self.remote_duck_plot)
+        duck_view_gui_element.addWidget(self.remote_duck_view)
 
         # Create basic image plot
         self.im_plot = pg.ImageView()
@@ -178,7 +178,7 @@ class FscvWin(QtWidgets.QMainWindow):
         self.p.param('DAQ').param('Data path').setValue(datafile_folder)
         self.p.param('DAQ').param('Data file').setValue(datafile_name)
 
-        print(datafile_path.absolute())
+        #print('start recording: ', datafile_path.absolute())
         #self.fileh = tb.open_file(datafile_path.absolute().as_posix(), mode='w')
         #self.fileh = tb.open_file(datafile_path, mode='w')
 
@@ -192,64 +192,68 @@ class FscvWin(QtWidgets.QMainWindow):
                                             samples_per_scan=self.samples_per_scan, rate=self.rate,
                                             filename=datafile_path.absolute())
 
+
         # TODO
         # Store all GUI values in datafile
-        #gui_params = self.p.getValues()
-        #for section in gui_params:
-        #    prms = gui_params[section][1]
-        #    for p in prms:
-        #        self.array_scans.attrs[p.replace(' ', '_')] = prms[p][0]
+        gui_params = self.p.getValues()
+        for section in gui_params:
+            prms = gui_params[section][1]
+            for p in prms:
+                #self.grabber.fileh.root.attrs[p.replace(' ', '_')] = prms[p][0]
+                self.grabber.array_scans.attrs[p.replace(' ', '_')] = prms[p][0]
 
-        # TODO
-        # min_val = -10
-        # max_val = 10
-        # taskI.ai_channels.add_ai_voltage_chan("PXI1Slot4_2/ai%i" % 0, min_val=min_val, max_val=max_val)
 
-        # Acquire data
-        if REAL_DATA:
-            self.grabber.start_grab()
+        self.grabber.start_grabbing()
 
-        self.timer = QtCore.QTimer()
-        self.timer.timeout.connect(self.update)
-        self.timer.start(int(line_scan_period*1e3))
-        self.lastUpdate = time.perf_counter()
+        # Line and duck plot timer
+        gui_period_ms = self.p.param('Monitor').param('GUI update period').value()*1e3
+        print(gui_period_ms)
+        self.gui_timer = QtCore.QTimer()
+        self.gui_timer.timeout.connect(self.update)
+        self.gui_timer.start(int(gui_period_ms))
+
+        # Image timer
+        image_period_ms = self.p.param('Monitor').param('Waterfall update period').value()*1e3
+        self.image_timer = QtCore.QTimer()
+        self.image_timer.timeout.connect(self.update_waterfall)
+        self.image_timer.start(int(image_period_ms))
+
+        #self.lastUpdate = time.perf_counter()
+
+    def update_waterfall(self):
+        # Plot image
+        if self.p.param('Monitor').param('Live waterfall').value():
+            self.im_plot.setImage(np.array(self.grabber.array_scans)[-50:], autoLevels = False,
+                                autoHistogramRange = False, autoRange = False)
 
     def update(self):
         """This is the central function that is called in a loop. Data is
         acquired and shown in the GUI"""
-        if REAL_DATA:
-            XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-        else:
-            # Delay as in real acquisition
-            time.sleep(0.005)
-
-            # Generate random data
-            data = np.random.normal(size=(3, self.samples_per_scan))
-
-
-        # Append new data to data storage
-        self.array_ts.append(np.array([time.time()])[np.newaxis])
-        self.array_command.append(data[0][:, np.newaxis])
-        self.array_scans.append(data[1][:, np.newaxis])
 
         # Plot single recording
-        self.remote_line_plot.plot(data[1], clear=True, _callSync='off')
-        #self.remote_line_plot.plot(data[0], clear=True, _callSync='off')
+        self.remote_current_plot.plot(self.grabber.last_data[1], clear=True, _callSync='off')
+        self.remote_command_plot.plot(self.grabber.last_data[0], clear=True, _callSync='off')
+        self.remote_duck_plot.plot(x=self.grabber.last_data[0],
+                                   y=self.grabber.last_data[1],
+                                   clear=True, _callSync='off')
 
-        # Plot image
-        if self.p.param('Monitor').param('Live waterfall').value():
-            self.im_plot.setImage(np.array(self.array_scans)[-50:], autoLevels = False,
-                                autoHistogramRange = False, autoRange = False)
 
         # Calculate show sampling frequency
-        now = time.perf_counter()
-        fps = 1.0 / (now - self.lastUpdate)
-        self.lastUpdate = now
-        self.avgFps = self.avgFps * 0.9 + fps * 0.1
-        self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
 
+
+        #now = time.perf_counter()
+        #fps = 1.0 / (now - self.lastUpdate)
+        #self.lastUpdate = now
+
+        #self.avgFps = self.avgFps * 0.9 + fps * 0.1
+
+        #self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
         # Update GUI values
-        n_scans_acquired = self.array_ts.shape[-1]
+        self.p.param('Monitor').param('Aquisition period').setValue(self.grabber.delta_t)
+        self.p.param('Monitor').param('Aquisition period min').setValue(self.grabber.delta_t_min)
+        self.p.param('Monitor').param('Aquisition period max').setValue(self.grabber.delta_t_max)
+
+        n_scans_acquired = self.grabber.n_scans_acquired
         self.p.param('Run').param('N scans acquired').setValue(n_scans_acquired)
 
         # Check if measurement is finished
@@ -263,19 +267,16 @@ class FscvWin(QtWidgets.QMainWindow):
         """Stop the recording: Update GUI, close file and stop DAQ"""
         self.p.param('Run').param('Start').setOpts(enabled=True)
         self.p.param('Run').param('Stop').setOpts(enabled=False)
-        self.timer.stop()
-        self.fileh.close()
-
-        if REAL_DATA:
-            self.taskI.close()
-            self.taskO.close()
+        self.grabber.stop_grab()
+        self.gui_timer.stop()
+        self.image_timer.stop()
 
     def closeEvent(self, event):
         """Window is beeing closed: stop measurement if it is running"""
         if self.p.param('Run').param('Stop').opts['enabled']:
             self.stop_recording()
 
-        self.view.close()
+        self.remote_current_view.close()
         event.accept()
 
 
