@@ -18,10 +18,14 @@ def getConfig():
 
     return general_config['DEFAULT']
 
-def getNextFile(config, fileformatstring ="fscv%04i.h5"):
-    # get today's folder
+def get_folder_of_the_day(config):
+    """Returns todays folder, the folder is created if it does not exist"""
     day_path = Path(config['datapath'], time.strftime("%Y-%m-%d", time.localtime()))
     day_path.mkdir(parents=True, exist_ok=True)
+    return day_path
+
+def getNextFile(config, fileformatstring ="fscv%04i.h5"):
+    day_path = get_folder_of_the_day(config)
 
     # Find the next free filename (try 10 times)
     i0 = len(os.listdir(day_path))

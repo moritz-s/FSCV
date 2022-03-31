@@ -60,24 +60,30 @@ class FscvWin(QtWidgets.QMainWindow):
                 {'name': 'Start', 'type': 'action'},
                 {'name': 'Stop', 'type': 'action', 'enabled': False},
                 {'name': 'N scans limit', 'type': 'int', 'value': 0},
-                {'name': 'N scans acquired', 'type': 'int', 'value': 0, 'readonly': True},
             ]},
-            {'name': 'Monitor', 'type': 'group', 'children': [
+
+            {'name': 'GUI', 'type': 'group', 'children': [
                 {'name': 'GUI update period', 'type': 'float', 'value': 0.1,
                          'siPrefix': True, 'suffix': 's', 'limits':(0.02, 1e2)},
                 {'name': 'Live waterfall', 'type': 'bool', 'value': True},
                 {'name': 'Waterfall update period', 'type': 'float', 'value': 1,
                          'siPrefix': True, 'suffix': 's', 'limits':(0.05, 1e2)},
+                {'name': 'Waterfall n scans', 'type': 'int', 'value': 100, 'limits':(1, 1e4)},
+                {'name': 'Live background subtraction', 'type': 'bool', 'value': False},
+                {'name': 'Background file', 'type': 'str', 'value': 'None', 'readonly': True},
+                {'name': 'Load background', 'type': 'action'},
+
+            ]},
+            {'name': 'Monitor', 'type': 'group', 'children': [
+                {'name': 'N scans acquired', 'type': 'int', 'value': 0, 'readonly': True},
                 {'name': 'Aquisition period', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 's',
                  'readonly': True},
                 {'name': 'Aquisition period min', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 's',
                  'readonly': True},
                 {'name': 'Aquisition period max', 'type': 'float', 'value': 0, 'siPrefix': True, 'suffix': 's',
                  'readonly': True},
-                #{'name': 'samples per scan', 'type': 'int',# 'value': 0, 'siPrefix': True, 'suffix': 'Hz',
-                # 'readonly': True},
             ]},
-            {'name': 'DAQ', 'type': 'group', 'children': [
+            {'name': 'Data storage', 'type': 'group', 'children': [
                 {'name': 'Data path', 'type': 'str', 'value': self.datapath.absolute().as_posix(),
                  'readonly': True},
                 {'name': 'Data file', 'type': 'str', 'value': '',
@@ -93,6 +99,7 @@ class FscvWin(QtWidgets.QMainWindow):
         # Connect the GUI Buttons to its functions
         p.param('Run', 'Start').sigActivated.connect(self.start_recording)
         p.param('Run', 'Stop').sigActivated.connect(self.stop_recording)
+        p.param('GUI', 'Load background').sigActivated.connect(self.load_background)
 
         # Add parameter gui element
         parameter_gui_element = ParameterTree()
@@ -141,6 +148,18 @@ class FscvWin(QtWidgets.QMainWindow):
             if self.p.param('Run').param('Stop').opts['enabled']:
                 self.stop_recording()
 
+    def load_background(self):
+        path_today = str(labtools.get_folder_of_the_day(self.config).absolute())
+        bg_filename, _ = QtGui.QFileDialog.getOpenFileName(self, caption='Select background recording',
+                                                    directory=path_today, filter='*.h5')
+        if bg_filename == '':
+            return
+
+        bg_file = tb.open_file(bg_filename, mode='r')
+        self.background_current = np.mean(bg_file.root.array_scans, 0)
+        short_filename = os.path.sep.join(bg_filename.split(os.path.sep)[-2:])
+        self.p.param('GUI').param('Background file').setValue(short_filename)
+
     def start_recording(self):
         """ This function starts a new recording. h5 storage, NiDAQ and the
         recording timer are inititalized"""
@@ -151,11 +170,10 @@ class FscvWin(QtWidgets.QMainWindow):
         # T_pre = self.p.param('Config').param('Pre ramp time').value()
         # T_pulse = self.p.param('Config').param('Total ramp time').value()
         # T_post = self.p.param('Config').param('Post ramp time').value()
-        self.n_scans = n_scans_limit = self.p.param('Run').param('N scans limit').value()
         self.rate = self.p.param('Config').param('Sampling rate').value()
         self.samples_per_scan = self.p.param('Config').param('Samples per scan').value()
         # line_scan_period = self.p.param('Config').param('Line scan period').value()
-        complevel = int(self.p.param('DAQ').param('Blosc compression level').value())
+        complevel = int(self.p.param('Data storage').param('Blosc compression level').value())
 
         # Update Gui state
         self.p.param('Run').param('Start').setOpts(enabled=False)
@@ -175,13 +193,14 @@ class FscvWin(QtWidgets.QMainWindow):
 
         datafile_path = labtools.getNextFile(self.config)
         datafile_folder, datafile_name = os.path.split(datafile_path.absolute())
-        self.p.param('DAQ').param('Data path').setValue(datafile_folder)
-        self.p.param('DAQ').param('Data file').setValue(datafile_name)
+        self.p.param('Data storage').param('Data path').setValue(datafile_folder)
+        self.p.param('Data storage').param('Data file').setValue(datafile_name)
 
         #print('start recording: ', datafile_path.absolute())
         #self.fileh = tb.open_file(datafile_path.absolute().as_posix(), mode='w')
         #self.fileh = tb.open_file(datafile_path, mode='w')
 
+        n_scans_limit = self.p.param('Run').param('N scans limit').value()
         if n_scans_limit == 0:
             # No line limit given, guessing a reasonable total number of scans
             expectedrows = 500
@@ -206,13 +225,13 @@ class FscvWin(QtWidgets.QMainWindow):
         self.grabber.start_grabbing()
 
         # Line and duck plot timer
-        gui_period_ms = self.p.param('Monitor').param('GUI update period').value()*1e3
+        gui_period_ms = self.p.param('GUI').param('GUI update period').value()*1e3
         self.gui_timer = QtCore.QTimer()
         self.gui_timer.timeout.connect(self.update)
         self.gui_timer.start(int(gui_period_ms))
 
         # Image timer
-        image_period_ms = self.p.param('Monitor').param('Waterfall update period').value()*1e3
+        image_period_ms = self.p.param('GUI').param('Waterfall update period').value()*1e3
         self.image_timer = QtCore.QTimer()
         self.image_timer.timeout.connect(self.update_waterfall)
         self.image_timer.start(int(image_period_ms))
@@ -220,30 +239,35 @@ class FscvWin(QtWidgets.QMainWindow):
         #self.lastUpdate = time.perf_counter()
 
     def update_waterfall(self):
-        # Plot image
-        if self.p.param('Monitor').param('Live waterfall').value():
-            self.im_plot.setImage(np.array(self.grabber.array_scans)[-50:], autoLevels = False,
-                                autoHistogramRange = False, autoRange = False)
+        """Update the waterfall plot"""
+        if self.p.param('GUI').param('Live waterfall').value():
+            n_limit = self.p.param('GUI').param('Waterfall n scans').value()
+            currents = np.array(self.grabber.array_scans)[-n_limit:]
+
+            if self.p.param('GUI').param('Live background subtraction').value():
+                currents -= self.background_current
+
+            self.im_plot.setImage(currents,
+                                  autoLevels=False,
+                                  autoHistogramRange=False,
+                                  autoRange=True)
 
     def update(self):
         """This is the central function that is called in a loop. Data is
         acquired and shown in the GUI"""
 
-        # Plot single recording
-        #self.remote_current_plot.plot(self.grabber.last_data[1], clear=True, _callSync='off')
-        #self.remote_command_plot.plot(self.grabber.last_data[0], clear=True, _callSync='off')
-        #self.remote_duck_plot.plot(x=self.grabber.last_data[0],
-        #                           y=self.grabber.last_data[1],
-        #                           clear=True, _callSync='off')
-        self.remote_current_plot.plot(self.grabber.array_scans[:, -1], clear=True, _callSync='off')
-        self.remote_command_plot.plot(self.grabber.array_command[:, -1], clear=True, _callSync='off')
-        self.remote_duck_plot.plot(x=self.grabber.array_command[:, -1],
-                                   y=self.grabber.array_scans[:, -1],
+        # Plot last recording
+        current = self.grabber.array_scans[:, -1]
+        command = self.grabber.array_command[:, -1]
+        if self.p.param('GUI').param('Live background subtraction').value():
+            current -= self.background_current
+
+        self.remote_current_plot.plot(current, clear=True, _callSync='off')
+        self.remote_command_plot.plot(command, clear=True, _callSync='off')
+        self.remote_duck_plot.plot(x=command, y=current,
                                    clear=True, _callSync='off')
 
-
         # Calculate show sampling frequency
-
 
         #now = time.perf_counter()
         #fps = 1.0 / (now - self.lastUpdate)
@@ -264,12 +288,12 @@ class FscvWin(QtWidgets.QMainWindow):
             self.p.param('Monitor').param('Aquisition period max').setValue(0)
 
         n_scans_acquired = self.grabber.n_scans_acquired
-        self.p.param('Run').param('N scans acquired').setValue(n_scans_acquired)
+        self.p.param('Monitor').param('N scans acquired').setValue(n_scans_acquired)
 
         # Check if measurement is finished
-        #n_scans_limit = self.p.param('Run').param('N scans limit').value()
-        if self.n_scans != 0:
-            if n_scans_acquired >= self.n_scans:
+        n_scans_limit = self.p.param('Run').param('N scans limit').value()
+        if n_scans_limit != 0:
+            if n_scans_acquired >= n_scans_limit:
                 self.stop_recording()
 
 
@@ -287,6 +311,8 @@ class FscvWin(QtWidgets.QMainWindow):
             self.stop_recording()
 
         self.remote_current_view.close()
+        self.remote_command_view.close()
+        self.remote_duck_view.close()
         event.accept()
 
 
@@ -302,6 +328,6 @@ if __name__ == '__main__':
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
     #finally:
-        # Stop
-        #window.taskI.close()
-        #window.taskO.close()
+    # Stop
+    #window.taskI.close()
+    #window.taskO.close()

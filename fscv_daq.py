@@ -63,6 +63,7 @@ class NIGrabber:
             data = np.array(self.task.read(number_of_samples_per_channel=self.samples_per_scan))
         else:
             data = np.random.normal(size=(2, self.samples_per_scan))
+            data[1,:50] +=5
 
         # For access by gui thread
         self.last_data = data
