@@ -230,10 +230,15 @@ class FscvWin(QtWidgets.QMainWindow):
         acquired and shown in the GUI"""
 
         # Plot single recording
-        self.remote_current_plot.plot(self.grabber.last_data[1], clear=True, _callSync='off')
-        self.remote_command_plot.plot(self.grabber.last_data[0], clear=True, _callSync='off')
-        self.remote_duck_plot.plot(x=self.grabber.last_data[0],
-                                   y=self.grabber.last_data[1],
+        #self.remote_current_plot.plot(self.grabber.last_data[1], clear=True, _callSync='off')
+        #self.remote_command_plot.plot(self.grabber.last_data[0], clear=True, _callSync='off')
+        #self.remote_duck_plot.plot(x=self.grabber.last_data[0],
+        #                           y=self.grabber.last_data[1],
+        #                           clear=True, _callSync='off')
+        self.remote_current_plot.plot(self.grabber.array_scans[:, -1], clear=True, _callSync='off')
+        self.remote_command_plot.plot(self.grabber.array_command[:, -1], clear=True, _callSync='off')
+        self.remote_duck_plot.plot(x=self.grabber.array_command[:, -1],
+                                   y=self.grabber.array_scans[:, -1],
                                    clear=True, _callSync='off')
 
 
@@ -248,9 +253,15 @@ class FscvWin(QtWidgets.QMainWindow):
 
         #self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
         # Update GUI values
-        self.p.param('Monitor').param('Aquisition period').setValue(self.grabber.delta_t)
-        self.p.param('Monitor').param('Aquisition period min').setValue(self.grabber.delta_t_min)
-        self.p.param('Monitor').param('Aquisition period max').setValue(self.grabber.delta_t_max)
+        try:
+            self.p.param('Monitor').param('Aquisition period').setValue(self.grabber.delta_t)
+            self.p.param('Monitor').param('Aquisition period min').setValue(self.grabber.delta_t_min)
+            self.p.param('Monitor').param('Aquisition period max').setValue(self.grabber.delta_t_max)
+        except TypeError:
+            # Not yet calculated
+            self.p.param('Monitor').param('Aquisition period').setValue(0)
+            self.p.param('Monitor').param('Aquisition period min').setValue(0)
+            self.p.param('Monitor').param('Aquisition period max').setValue(0)
 
         n_scans_acquired = self.grabber.n_scans_acquired
         self.p.param('Run').param('N scans acquired').setValue(n_scans_acquired)

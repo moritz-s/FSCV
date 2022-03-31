@@ -27,6 +27,10 @@ class NIGrabber:
         self.n_scans_acquired = 0
         self.running = False
 
+        self.delta_t_max = None
+        self.delta_t_min = None
+        self.delta_t = None
+
         self.fileh = tb.open_file(filename, mode='w')
         # Array for timestanps
         self.array_ts = self.fileh.create_earray(self.fileh.root,
@@ -55,7 +59,6 @@ class NIGrabber:
 
     def callback(self, task_handle, every_n_samples_event_type,
                 number_of_samples, callback_data):
-
         if REAL_DATA:
             data = np.array(self.task.read(number_of_samples_per_channel=self.samples_per_scan))
         else:
@@ -106,7 +109,8 @@ class NIGrabber:
 
             #self.task.timing.cfg_samp_clk_timing(1000, sample_mode=AcquisitionType.CONTINUOUS)
             self.task.timing.cfg_samp_clk_timing(rate=self.rate,
-                                                sample_mode=AcquisitionType.FINITE)
+                                                 sample_mode=AcquisitionType.FINITE,
+                                                 samps_per_chan=self.samples_per_scan)
 
             self.task.register_every_n_samples_acquired_into_buffer_event(
                 self.samples_per_scan, self.callback)
@@ -158,7 +162,7 @@ class MyGui:
     def doMeasurement(self):
         for i in range(3):
             print('Gui update', self.grabber.n_scans_acquired)
-            time.sleep(1)
+            time.sleep(0.3)
 
         print(self.grabber.delta_t_min)
         print(self.grabber.delta_t)
@@ -167,7 +171,7 @@ class MyGui:
         self.grabber.stop_grab()
 
 if __name__ == '__main__':
-    grabber = NIGrabber()
+    grabber = NIGrabber(samples_per_scan=1001, rate=200e3)
     grab_thread = threading.Thread(target=grabber.start_grabbing)
     grab_thread.start()
 
