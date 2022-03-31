@@ -2,10 +2,9 @@
 import os
 import sys
 import time
+from pathlib import Path
 import numpy as np
 import tables as tb
-from pathlib import Path
-import CallBackMP2 as ni_grabber
 
 import pyqtgraph as pg
 import pyqtgraph.dockarea as pqda
@@ -14,6 +13,7 @@ from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
 import labtools
+import fscv_daq
 
 class FscvWin(QtWidgets.QMainWindow):
     """Main window for the FSCV measurement"""
@@ -188,7 +188,7 @@ class FscvWin(QtWidgets.QMainWindow):
         else:
             expectedrows = n_scans_limit
 
-        self.grabber = ni_grabber.NIGrabber(complevel=complevel, expectedrows=expectedrows,
+        self.grabber = fscv_daq.NIGrabber(complevel=complevel, expectedrows=expectedrows,
                                             samples_per_scan=self.samples_per_scan, rate=self.rate,
                                             filename=datafile_path.absolute())
 
