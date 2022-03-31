@@ -207,7 +207,6 @@ class FscvWin(QtWidgets.QMainWindow):
 
         # Line and duck plot timer
         gui_period_ms = self.p.param('Monitor').param('GUI update period').value()*1e3
-        print(gui_period_ms)
         self.gui_timer = QtCore.QTimer()
         self.gui_timer.timeout.connect(self.update)
         self.gui_timer.start(int(gui_period_ms))
