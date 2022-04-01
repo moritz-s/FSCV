@@ -21,6 +21,7 @@ class FscvWin(QtWidgets.QMainWindow):
         # Load config file
         self.config = labtools.getConfig()
         self.datapath = Path(self.config.get('datapath', fallback='data'))
+        self.background_current = None
 
         # Build Gui
         QtGui.QMainWindow.__init__(self)
@@ -69,7 +70,7 @@ class FscvWin(QtWidgets.QMainWindow):
                 {'name': 'Waterfall update period', 'type': 'float', 'value': 1,
                          'siPrefix': True, 'suffix': 's', 'limits':(0.05, 1e2)},
                 {'name': 'Waterfall n scans', 'type': 'int', 'value': 100, 'limits':(1, 1e4)},
-                {'name': 'Live background subtraction', 'type': 'bool', 'value': False},
+                {'name': 'Live background subtraction', 'type': 'bool', 'value': False, 'readonly': True},
                 {'name': 'Background file', 'type': 'str', 'value': 'None', 'readonly': True},
                 {'name': 'Load background', 'type': 'action'},
 
@@ -155,10 +156,13 @@ class FscvWin(QtWidgets.QMainWindow):
         if bg_filename == '':
             return
 
-        bg_file = tb.open_file(bg_filename, mode='r')
-        self.background_current = np.mean(bg_file.root.array_scans, 0)
+        with tb.open_file(bg_filename, mode='r') as bg_file:
+            self.background_current = np.mean(bg_file.root.array_scans, 0)
+
         short_filename = os.path.sep.join(bg_filename.split(os.path.sep)[-2:])
         self.p.param('GUI').param('Background file').setValue(short_filename)
+        self.p.param('GUI').param('Live background subtraction').setValue(True)
+        self.p.param('GUI').param('Live background subtraction').setOpts(readonly=False)
 
     def start_recording(self):
         """ This function starts a new recording. h5 storage, NiDAQ and the
@@ -245,7 +249,15 @@ class FscvWin(QtWidgets.QMainWindow):
             currents = np.array(self.grabber.array_scans)[-n_limit:]
 
             if self.p.param('GUI').param('Live background subtraction').value():
-                currents -= self.background_current
+                try:
+                    currents -= self.background_current
+                except ValueError:
+                    # Possibly number of samples per scan changed
+                    self.background_current = None
+                    self.p.param('GUI').param('Live background subtraction').setValue(False)
+                    self.p.param('GUI').param('Live background subtraction').setOpts(readonly=True)
+                    self.p.param('GUI').param('Background file').setValue('Cleared')
+                    return
 
             self.im_plot.setImage(currents,
                                   autoLevels=False,
@@ -260,7 +272,15 @@ class FscvWin(QtWidgets.QMainWindow):
         current = self.grabber.array_scans[:, -1]
         command = self.grabber.array_command[:, -1]
         if self.p.param('GUI').param('Live background subtraction').value():
-            current -= self.background_current
+            try:
+                current -= self.background_current
+            except ValueError:
+                # Possibly number of samples per scan changed
+                self.background_current = None
+                self.p.param('GUI').param('Background file').setValue('Cleared')
+                self.p.param('GUI').param('Live background subtraction').setValue(False)
+                self.p.param('GUI').param('Live background subtraction').setOpts(readonly=True)
+                return
 
         self.remote_current_plot.plot(current, clear=True, _callSync='off')
         self.remote_command_plot.plot(command, clear=True, _callSync='off')
@@ -295,7 +315,6 @@ class FscvWin(QtWidgets.QMainWindow):
         if n_scans_limit != 0:
             if n_scans_acquired >= n_scans_limit:
                 self.stop_recording()
-
 
     def stop_recording(self):
         """Stop the recording: Update GUI, close file and stop DAQ"""
