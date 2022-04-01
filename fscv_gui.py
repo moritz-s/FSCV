@@ -12,8 +12,11 @@ import pyqtgraph.widgets.RemoteGraphicsView
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
+from pymeasure.instruments.agilent import Agilent33220A
+
 import labtools
 import fscv_daq
+
 
 class FscvWin(QtWidgets.QMainWindow):
     """Main window for the FSCV measurement"""
@@ -22,6 +25,7 @@ class FscvWin(QtWidgets.QMainWindow):
         self.config = labtools.getConfig()
         self.datapath = Path(self.config.get('datapath', fallback='data'))
         self.background_current = None
+        self.function_generator = Agilent33220A('USB0::0x0957::0x0407::MY43004373::INSTR')
 
         # Build Gui
         QtGui.QMainWindow.__init__(self)
@@ -216,15 +220,14 @@ class FscvWin(QtWidgets.QMainWindow):
                                             filename=datafile_path.absolute())
 
 
-        # TODO
         # Store all GUI values in datafile
         gui_params = self.p.getValues()
         for section in gui_params:
             prms = gui_params[section][1]
             for p in prms:
+                # TODO
                 #self.grabber.fileh.root.attrs[p.replace(' ', '_')] = prms[p][0]
                 self.grabber.array_scans.attrs[p.replace(' ', '_')] = prms[p][0]
-
 
         self.grabber.start_grabbing()
 
@@ -239,6 +242,10 @@ class FscvWin(QtWidgets.QMainWindow):
         self.image_timer = QtCore.QTimer()
         self.image_timer.timeout.connect(self.update_waterfall)
         self.image_timer.start(int(image_period_ms))
+
+
+        # Activate output of function generator
+        self.function_generator.output = True
 
         #self.lastUpdate = time.perf_counter()
 
@@ -318,6 +325,9 @@ class FscvWin(QtWidgets.QMainWindow):
 
     def stop_recording(self):
         """Stop the recording: Update GUI, close file and stop DAQ"""
+        # Disable output of function generator
+        self.function_generator.output = False
+
         self.p.param('Run').param('Start').setOpts(enabled=True)
         self.p.param('Run').param('Stop').setOpts(enabled=False)
         self.grabber.stop_grab()

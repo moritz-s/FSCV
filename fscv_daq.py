@@ -172,10 +172,28 @@ class MyGui:
         self.grabber.stop_grab()
 
 if __name__ == '__main__':
-    grabber = NIGrabber(samples_per_scan=1001, rate=200e3)
-    grab_thread = threading.Thread(target=grabber.start_grabbing)
-    grab_thread.start()
+    if 0:
+        grabber = NIGrabber(samples_per_scan=1001, rate=200e3)
+        grab_thread = threading.Thread(target=grabber.start_grabbing)
+        grab_thread.start()
 
-    my_gui = MyGui(grabber)
-    gui_thread = threading.Thread(target=my_gui.doMeasurement)
-    gui_thread.start()
+        my_gui = MyGui(grabber)
+        gui_thread = threading.Thread(target=my_gui.doMeasurement)
+        gui_thread.start()
+
+
+#from pymeasure.instruments.agilent import Agilent33220A
+#fun = Agilent33220A('USB0::0x0957::0x0407::MY43004373::INSTR')
+
+import logging
+from ecu import ECUManager
+
+logging.getLogger().setLevel(logging.WARNING)
+logging.warning('Connection example started!')
+
+manager = ECUManager()
+for ecu in manager.get_all():
+    print(ecu)
+    ecu.enable(1)
+    time.sleep(2)
+    ecu.disable(1)
