@@ -12,7 +12,11 @@ import pyqtgraph.widgets.RemoteGraphicsView
 from pyqtgraph.parametertree import Parameter, ParameterTree
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
-from pymeasure.instruments.agilent import Agilent33220A
+try:
+    from pymeasure.instruments.agilent import Agilent33220A
+    AGILENT_CONNECTED = True
+except ModuleNotFoundError:
+    AGILENT_CONNECTED = False
 
 import labtools
 import fscv_daq
@@ -25,7 +29,8 @@ class FscvWin(QtWidgets.QMainWindow):
         self.config = labtools.getConfig()
         self.datapath = Path(self.config.get('datapath', fallback='data'))
         self.background_current = None
-        self.function_generator = Agilent33220A('USB0::0x0957::0x0407::MY43004373::INSTR')
+        if AGILENT_CONNECTED:
+            self.function_generator = Agilent33220A('USB0::0x0957::0x0407::MY43004373::INSTR')
 
         # Build Gui
         QtGui.QMainWindow.__init__(self)
@@ -245,7 +250,8 @@ class FscvWin(QtWidgets.QMainWindow):
 
 
         # Activate output of function generator
-        self.function_generator.output = True
+        if AGILENT_CONNECTED:
+            self.function_generator.output = True
 
         #self.lastUpdate = time.perf_counter()
 
@@ -326,7 +332,9 @@ class FscvWin(QtWidgets.QMainWindow):
     def stop_recording(self):
         """Stop the recording: Update GUI, close file and stop DAQ"""
         # Disable output of function generator
-        self.function_generator.output = False
+
+        if AGILENT_CONNECTED:
+            self.function_generator.output = False
 
         self.p.param('Run').param('Start').setOpts(enabled=True)
         self.p.param('Run').param('Stop').setOpts(enabled=False)

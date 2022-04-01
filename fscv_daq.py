@@ -185,15 +185,12 @@ if __name__ == '__main__':
 #from pymeasure.instruments.agilent import Agilent33220A
 #fun = Agilent33220A('USB0::0x0957::0x0407::MY43004373::INSTR')
 
-import logging
-from ecu import ECUManager
+if 0:
+    from ecu import ECUManager
 
-logging.getLogger().setLevel(logging.WARNING)
-logging.warning('Connection example started!')
-
-manager = ECUManager()
-for ecu in manager.get_all():
-    print(ecu)
-    ecu.enable(1)
-    time.sleep(2)
-    ecu.disable(1)
+    manager = ECUManager()
+    for ecu in manager.get_all():
+        print(ecu)
+        ecu.enable(1)
+        time.sleep(2)
+        ecu.disable(1)
