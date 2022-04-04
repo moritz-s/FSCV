@@ -18,6 +18,12 @@ try:
 except ModuleNotFoundError:
     AGILENT_CONNECTED = False
 
+try:
+    from ecu import ECUManager
+    VALVES_CONNECTED = True
+except ModuleNotFoundError:
+    VALVES_CONNECTED = False
+
 import labtools
 import fscv_daq
 
@@ -28,12 +34,22 @@ class FscvWin(QtWidgets.QMainWindow):
         # Load config file
         self.config = labtools.getConfig()
         self.datapath = Path(self.config.get('datapath', fallback='data'))
+
+        self.symphonies = labtools.getConfig(None)
+
         self.background_current = None
         if AGILENT_CONNECTED:
-            self.function_generator = Agilent33220A('USB0::0x0957::0x0407::MY43004373::INSTR')
+            self.function_generator = Agilent33220A(
+                'USB0::0x0957::0x0407::MY43004373::INSTR')
+
+        if VALVES_CONNECTED:
+            print('Valves connected.')
+            self.ecu_manager = ECUManager()
+
 
         # Build Gui
-        QtGui.QMainWindow.__init__(self)
+        #QtGui.QMainWindow.__init__(self)
+        QtWidgets.QMainWindow.__init__(self)
         area = self.area = pqda.DockArea()
         self.setCentralWidget(area)
         self.resize(1200, 800)
@@ -100,6 +116,11 @@ class FscvWin(QtWidgets.QMainWindow):
                  'readonly': True},
                 {'name': 'Blosc compression level', 'type': 'int', 'value': 5,
                         'limits': (0, 9)},
+            ]},
+            {'name': 'Valve control', 'type': 'group', 'children': [
+                {'name': 'Symphony', 'type': 'list', 'values': self.symphonies.sections(),
+                 'value': 2},
+                {'name': 'State', 'type': 'str', 'value': '', 'readonly': True},
             ]},
             ]
 
@@ -176,6 +197,26 @@ class FscvWin(QtWidgets.QMainWindow):
     def start_recording(self):
         """ This function starts a new recording. h5 storage, NiDAQ and the
         recording timer are inititalized"""
+
+        symphony_name = self.p.param('Valve control').param('Symphony').value()
+        self.symphony = self.symphonies[symphony_name]
+        self.chordtimers = []
+        self.chords = []
+
+        for k in sorted(self.symphony, reverse=True):
+            if not k.lower().startswith('t-'):
+                continue
+
+            chord = self.symphony[k].strip().replace(' ', '')
+            self.chords.append(chord)
+
+            chordtime = float(k[2:])*1e3
+            timer = QtCore.QTimer()
+            timer.timeout.connect(self.update_valves)
+            timer.setSingleShot(True)
+            timer.start(chordtime)
+            #print("timer started ", chordtime)
+            self.chordtimers.append(timer)
 
         # Read GUI values
         # U_0 = self.p.param('Config').param('U_0').value()
@@ -254,6 +295,30 @@ class FscvWin(QtWidgets.QMainWindow):
             self.function_generator.output = True
 
         #self.lastUpdate = time.perf_counter()
+
+    def set_valves(self, chord):
+        """Set the valves to a given chord"""
+        #print('Playing chord ', end='')
+        #print(chord)
+        if VALVES_CONNECTED:
+            for i, ecu in enumerate(self.ecu_manager.get_all()):
+                print(ecu)
+                if chord[i] == "0":
+                    ecu.disable(1)
+                elif chord[i] == "1":
+                    ecu.enable(1)
+                else:
+                    print("Error in symphony: ", chord)
+        else:
+            i=0
+
+        actual_chord = chord[:i]
+        self.p.param('Valve control').param('State').setValue("%s (%s)"%(actual_chord, chord))
+
+    def update_valves(self):
+        """Update all the valves to the next chord in the symphony"""
+        chord = self.chords.pop()
+        self.set_valves(chord)
 
     def update_waterfall(self):
         """Update the waterfall plot"""
@@ -342,6 +407,12 @@ class FscvWin(QtWidgets.QMainWindow):
         self.gui_timer.stop()
         self.image_timer.stop()
 
+        for timer in self.chordtimers:
+            timer.stop()
+
+        if self.symphony.get('final_chord') is not None:
+            self.set_valves(self.symphony.get('final_chord'))
+
     def closeEvent(self, event):
         """Window is beeing closed: stop measurement if it is running"""
         if self.p.param('Run').param('Stop').opts['enabled']:
@@ -363,7 +434,8 @@ if __name__ == '__main__':
     #try:
     window.show()
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-        QtGui.QApplication.instance().exec_()
+        #QtGui.QApplication.instance().exec_()
+        QtWidgets.QApplication.instance().exec_()
     #finally:
     # Stop
     #window.taskI.close()
