@@ -301,18 +301,21 @@ class FscvWin(QtWidgets.QMainWindow):
         #print('Playing chord ', end='')
         #print(chord)
         if VALVES_CONNECTED:
-            for i, ecu in enumerate(self.ecu_manager.get_all()):
-                print(ecu)
-                if chord[i] == "0":
-                    ecu.disable(1)
-                elif chord[i] == "1":
-                    ecu.enable(1)
-                else:
-                    print("Error in symphony: ", chord)
+            for i_ecu, ecu in enumerate(self.ecu_manager.get_all()):
+                #print(ecu)
+                for channel in [1, 2]:
+                    i_total = i_ecu * 2 + channel - 1
+                    if chord[i_total] == "0":
+                        ecu.disable(channel)
+                    elif chord[i_total] == "1":
+                        ecu.enable(channel)
+                    else:
+                        print("Error in symphony: ", chord)
+            i_ecu += 1
         else:
-            i=0
+            i_ecu=0
 
-        actual_chord = chord[:i]
+        actual_chord = chord[:i_ecu*2]
         self.p.param('Valve control').param('State').setValue("%s (%s)"%(actual_chord, chord))
 
     def update_valves(self):
@@ -349,6 +352,11 @@ class FscvWin(QtWidgets.QMainWindow):
         # Plot last recording
         current = self.grabber.array_scans[:, -1]
         command = self.grabber.array_command[:, -1]
+
+        if len(current.shape) == 2:
+            print('DAQ failed: empty data')
+            return
+
         if self.p.param('GUI').param('Live background subtraction').value():
             try:
                 current -= self.background_current
