@@ -42,10 +42,21 @@ class FscvWin(QtWidgets.QMainWindow):
             self.function_generator = Agilent33220A(
                 'USB0::0x0957::0x0407::MY43004373::INSTR')
 
-        if VALVES_CONNECTED:
-            print('Valves connected.')
-            self.ecu_manager = ECUManager()
+        self.ecu_config = labtools.getConfig('ECUS')
 
+        if VALVES_CONNECTED:
+            self.ecu_manager = ECUManager()
+            for ecu in enumerate(self.ecu_manager.get_all()):
+                print('Connected: ', ecu)
+
+            self.ecus = [None, None, None, None]
+            for i in range(4):
+                try:
+                    self.ecus[i] = self.ecu_manager.get_by_uuid(
+                                                    self.ecu_config['ECU_%i'%(i+1)])
+                    print("Identified ecu position %i"%(i+1), self.ecus[i])
+                except KeyError:
+                    print("Ecu position %i not configured"%(i+1))
 
         # Build Gui
         #QtGui.QMainWindow.__init__(self)
@@ -297,9 +308,15 @@ class FscvWin(QtWidgets.QMainWindow):
         #self.lastUpdate = time.perf_counter()
 
     def set_valves(self, chord):
-        """Set the valves to a given chord"""
+        """Set the valves to a given chord, """
         #print('Playing chord ', end='')
         #print(chord)
+        bool_chord = [x=="1" for x in chord]
+        for i in range(len(self.ecus)):
+
+        for i, _ in enumerate(self.ecus):
+            self.ecus[i].set_enabled(1, chord[])
+
         if VALVES_CONNECTED:
             for i_ecu, ecu in enumerate(self.ecu_manager.get_all()):
                 #print(ecu)

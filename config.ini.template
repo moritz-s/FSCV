@@ -1,0 +1,14 @@
+# 
+[DEFAULT]
+datapath = data
+
+[ECUS]
+ECU_1 = UUID_ECU_1
+ECU_2 = UUID_ECU_2
+ECU_3 = UUID_ECU_3
+ECU_4 = UUID_ECU_4
+
+[Flow pattern 1]
+T-0 = 0000 0000
+T-1 = 0010 0000
+T-2 = 0000 0000
