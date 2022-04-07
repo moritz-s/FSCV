@@ -35,19 +35,27 @@ class FscvWin(QtWidgets.QMainWindow):
         self.config = labtools.getConfig()
         self.datapath = Path(self.config.get('datapath', fallback='data'))
 
-        self.symphonies = labtools.getConfig(None)
+        # Load ECU config
+        self.ecu_config = labtools.getConfig('ECUS')
 
+        # Connect to Function generator
         self.background_current = None
         if AGILENT_CONNECTED:
             self.function_generator = Agilent33220A(
                 'USB0::0x0957::0x0407::MY43004373::INSTR')
 
-        self.ecu_config = labtools.getConfig('ECUS')
+        # Load Symphonies
+        self.symphonies = labtools.getConfig(None)
+        # Remove non symphonies
+        for section in self.symphonies.sections():
+            if not section.startswith('Sym'):
+                self.symphonies.pop(section)
 
+        # Connect to valves
         if VALVES_CONNECTED:
             self.ecu_manager = ECUManager()
-            for ecu in enumerate(self.ecu_manager.get_all()):
-                print('Connected: ', ecu)
+            for state, ecu in enumerate(self.ecu_manager.get_all()):
+                print('Connected: ', ecu)#, "UUID: ",ecu.uuid)
 
             self.ecus = [None, None, None, None]
             for i in range(4):
@@ -57,6 +65,8 @@ class FscvWin(QtWidgets.QMainWindow):
                     print("Identified ecu position %i"%(i+1), self.ecus[i])
                 except KeyError:
                     print("Ecu position %i not configured"%(i+1))
+                except ValueError as e:
+                    print("Ecu %s not connected"%self.ecu_config['ECU_%i' % (i + 1)])
 
         # Build Gui
         #QtGui.QMainWindow.__init__(self)
@@ -312,28 +322,32 @@ class FscvWin(QtWidgets.QMainWindow):
         #print('Playing chord ', end='')
         #print(chord)
         bool_chord = [x=="1" for x in chord]
-        for i in range(len(self.ecus)):
-
-        for i, _ in enumerate(self.ecus):
-            self.ecus[i].set_enabled(1, chord[])
+        #for i in range(len(self.ecus)):
+        #    pass
 
         if VALVES_CONNECTED:
-            for i_ecu, ecu in enumerate(self.ecu_manager.get_all()):
-                #print(ecu)
-                for channel in [1, 2]:
-                    i_total = i_ecu * 2 + channel - 1
-                    if chord[i_total] == "0":
-                        ecu.disable(channel)
-                    elif chord[i_total] == "1":
-                        ecu.enable(channel)
-                    else:
-                        print("Error in symphony: ", chord)
-            i_ecu += 1
-        else:
-            i_ecu=0
+            for i, ecu in enumerate(self.ecus):
+                if ecu is None:
+                    continue
+                self.ecus[i].set_enabled(1, bool_chord[i*2])
+                self.ecus[i].set_enabled(2, bool_chord[1+i*2])
 
-        actual_chord = chord[:i_ecu*2]
-        self.p.param('Valve control').param('State').setValue("%s (%s)"%(actual_chord, chord))
+        #    for i_ecu, ecu in enumerate(self.ecu_manager.get_all()):
+        #        #print(ecu)
+        #        for channel in [1, 2]:
+        #            i_total = i_ecu * 2 + channel - 1
+        #            if chord[i_total] == "0":
+        #                ecu.disable(channel)
+        #            elif chord[i_total] == "1":
+        #                ecu.enable(channel)
+        #            else:
+        #                print("Error in symphony: ", chord)
+        #    i_ecu += 1
+        #else:
+        #    i_ecu=0
+
+        #actual_chord = chord[:i_ecu*2]
+        self.p.param('Valve control').param('State').setValue("%s"%chord)
 
     def update_valves(self):
         """Update all the valves to the next chord in the symphony"""
