@@ -10,11 +10,12 @@ def getConfig(section='DEFAULT'):
     is returned. If section is None the complete config file is returned"""
     general_config = configparser.ConfigParser()
     general_config['DEFAULT']['datapath'] = 'data'
+    general_config.read("config.default.ini")
     general_config.read("config.ini")
-    # Generate a config file if it doesnt exist
-    if not Path('config.ini').is_file():
-        with open('config.ini', 'w') as configfile:
-            general_config.write(configfile)
+    # # Generate a config file if it doesnt exist
+    # if not Path('config.ini').is_file():
+    #     with open('config.ini', 'w') as configfile:
+    #         general_config.write(configfile)
 
     if section is None:
         return general_config

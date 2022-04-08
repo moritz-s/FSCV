@@ -32,6 +32,7 @@ NO_SYMPHONY_NAME = "None"
 space = " "*20
 STOP_BTN_NAME = space+"Stop"+space
 START_BTN_NAME = space+"Start"+space
+FINAL_CHORD = "final_chord"
 
 class FscvWin(QtWidgets.QMainWindow):
     """Main window for the FSCV measurement"""
@@ -56,6 +57,7 @@ class FscvWin(QtWidgets.QMainWindow):
                 print('Connected: ', ecu)#, "UUID: ",ecu.uuid)
 
             self.ecus = [None, None, None, None]
+            ecu_errors = []
             for i in range(4):
                 try:
                     self.ecus[i] = self.ecu_manager.get_by_uuid(
@@ -64,7 +66,12 @@ class FscvWin(QtWidgets.QMainWindow):
                 except KeyError:
                     print("Ecu position %i not configured"%(i+1))
                 except ValueError as e:
-                    print("Ecu %s not connected"%self.ecu_config['ECU_%i' % (i + 1)])
+                    ecu_error = "Ecu %s not connected"%self.ecu_config['ECU_%i' % (i + 1)]
+                    print(ecu_error)
+                    ecu_errors.append(ecu_error)
+            if ecu_errors != []:
+                pg.QtGui.QMessageBox.critical(self, "Valve ECU connection error", str(ecu_errors))
+
 
 
         # Build Gui
@@ -207,8 +214,15 @@ class FscvWin(QtWidgets.QMainWindow):
     def load_symphonies(self):
         """Loads the valve control pattern from symphonies.ini file"""
         self.symphonies = configparser.ConfigParser()
-        self.symphonies.read("symphonies.ini")
-        self.p.param('Valve control', 'Symphony').setLimits([NO_SYMPHONY_NAME, *self.symphonies.sections()])
+        try:
+            self.symphonies.read("symphonies.ini")
+            self.p.param('Valve control', 'Symphony').setLimits([NO_SYMPHONY_NAME,
+                                                                *self.symphonies.sections()])
+        except configparser.Error as e:
+            pg.QtGui.QMessageBox.critical(self, "Parsing error in symphonies.ini", str(e))
+            self.symphonies = None
+            self.p.param('Valve control', 'Symphony').setLimits([NO_SYMPHONY_NAME])
+            #self.p.param('Valve control', 'Symphony').value()
 
     def load_background(self):
         path_today = str(labtools.get_folder_of_the_day(self.config).absolute())
@@ -221,31 +235,44 @@ class FscvWin(QtWidgets.QMainWindow):
             self.background_current = np.mean(bg_file.root.array_scans, 0)
 
         short_filename = os.path.sep.join(bg_filename.split(os.path.sep)[-2:])
-        self.p.param('GUI').param('Background file').setValue(short_filename)
-        self.p.param('GUI').param('Live background subtraction').setValue(True)
-        self.p.param('GUI').param('Live background subtraction').setOpts(readonly=False)
+        self.p.param('GUI', 'Background file').setValue(short_filename)
+        self.p.param('GUI', 'Live background subtraction').setValue(True)
+        self.p.param('GUI', 'Live background subtraction').setOpts(readonly=False)
 
     def start_recording(self):
         """ This function starts a new recording. h5 storage, NiDAQ and the
         recording timer are inititalized"""
 
-        symphony_name = self.p.param('Valve control').param('Symphony').value()
+        symphony_name = self.p.param('Valve control', 'Symphony').value()
         if symphony_name != NO_SYMPHONY_NAME:
-            self.symphony = self.symphonies[symphony_name]
-            self.chordtimers = []
-            self.chords = []
+            try:
+                self.symphony = self.symphonies[symphony_name]
+                self.chordtimers = []
+                self.chords = []
 
-            for k in sorted(self.symphony, reverse=True):
-                chordtime = float(k)*1e3
-                chord = self.symphony[k].strip().replace(' ', '')
+                for k in sorted(self.symphony, reverse=True):
+                    chord = self.symphony[k].strip()#.replace(' ', '')
+                    if chord.replace('0', '').replace('1', '').strip() != '':
+                        raise ValueError('Invalid character in chord: %s . Only 0 and 1 allowed.'%chord)
+                    if k == FINAL_CHORD:
+                        # Final chord is not appended to the list.
+                        continue
+                    self.chords.append(chord)
+                    
+                    chordtime = float(k)*1e3
+                    timer = QtCore.QTimer()
+                    timer.timeout.connect(self.next_chord)
+                    timer.setSingleShot(True)
+                    timer.start(int(chordtime))
+                    self.chordtimers.append(timer)
 
-                self.chords.append(chord)
+            except ValueError as e:
+                pg.QtGui.QMessageBox.critical(self, 
+                        "Parsing error in symphony: %s"%symphony_name+space,
+                        "In section %s"%symphony_name+'\n'+str(e))
+                self.symphony = None
+                return
 
-                timer = QtCore.QTimer()
-                timer.timeout.connect(self.update_valves)
-                timer.setSingleShot(True)
-                timer.start(int(chordtime))
-                self.chordtimers.append(timer)
         else:
             self.symphony = None
 
@@ -330,7 +357,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
     def set_valves(self, chord):
         """Set the valves to a given chord, """
-        bool_chord = [x=="1" for x in chord]
+        bool_chord = [x=="1" for x in chord.replace(' ', '')]
 
         if VALVES_CONNECTED:
             for i, ecu in enumerate(self.ecus):
@@ -341,7 +368,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
         self.p.param('Valve control').param('State').setValue("%s"%chord)
 
-    def update_valves(self):
+    def next_chord(self):
         """Update all the valves to the next chord in the symphony"""
         chord = self.chords.pop()
         self.set_valves(chord)
@@ -443,8 +470,8 @@ class FscvWin(QtWidgets.QMainWindow):
             for timer in self.chordtimers:
                 timer.stop()
 
-            if self.symphony.get('final_chord') is not None:
-                self.set_valves(self.symphony.get('final_chord'))
+            if self.symphony.get(FINAL_CHORD) is not None:
+                self.set_valves(self.symphony.get(FINAL_CHORD))
 
     def closeEvent(self, event):
         """Window is beeing closed: stop measurement if it is running"""
