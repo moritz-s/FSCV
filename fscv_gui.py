@@ -3,6 +3,7 @@ import os
 import sys
 import time
 from pathlib import Path
+import configparser
 import numpy as np
 import tables as tb
 
@@ -27,6 +28,10 @@ except ModuleNotFoundError:
 import labtools
 import fscv_daq
 
+NO_SYMPHONY_NAME = "None"
+space = " "*20
+STOP_BTN_NAME = space+"Stop"+space
+START_BTN_NAME = space+"Start"+space
 
 class FscvWin(QtWidgets.QMainWindow):
     """Main window for the FSCV measurement"""
@@ -44,13 +49,6 @@ class FscvWin(QtWidgets.QMainWindow):
             self.function_generator = Agilent33220A(
                 'USB0::0x0957::0x0407::MY43004373::INSTR')
 
-        # Load Symphonies
-        self.symphonies = labtools.getConfig(None)
-        # Remove non symphonies
-        for section in self.symphonies.sections():
-            if not section.startswith('Sym'):
-                self.symphonies.pop(section)
-
         # Connect to valves
         if VALVES_CONNECTED:
             self.ecu_manager = ECUManager()
@@ -67,6 +65,7 @@ class FscvWin(QtWidgets.QMainWindow):
                     print("Ecu position %i not configured"%(i+1))
                 except ValueError as e:
                     print("Ecu %s not connected"%self.ecu_config['ECU_%i' % (i + 1)])
+
 
         # Build Gui
         #QtGui.QMainWindow.__init__(self)
@@ -104,8 +103,8 @@ class FscvWin(QtWidgets.QMainWindow):
                 #{'name': 'Line scan period', 'type': 'float', 'value': 0.1, 'siPrefix': True, 'suffix': 's'},
             ]},
             {'name': 'Run', 'type': 'group', 'children': [
-                {'name': 'Start', 'type': 'action'},
-                {'name': 'Stop', 'type': 'action', 'enabled': False},
+                {'name': START_BTN_NAME, 'type': 'action'},
+                {'name': STOP_BTN_NAME, 'type': 'action', 'enabled': False},
                 {'name': 'N scans limit', 'type': 'int', 'value': 0},
             ]},
 
@@ -115,7 +114,7 @@ class FscvWin(QtWidgets.QMainWindow):
                 {'name': 'Live waterfall', 'type': 'bool', 'value': True},
                 {'name': 'Waterfall update period', 'type': 'float', 'value': 1,
                          'siPrefix': True, 'suffix': 's', 'limits':(0.05, 1e2)},
-                {'name': 'Waterfall n scans', 'type': 'int', 'value': 100, 'limits':(1, 1e4)},
+                {'name': 'Waterfall n scans', 'type': 'int', 'value': 600, 'limits':(1, 1e4)},
                 {'name': 'Live background subtraction', 'type': 'bool', 'value': False, 'readonly': True},
                 {'name': 'Background file', 'type': 'str', 'value': 'None', 'readonly': True},
                 {'name': 'Load background', 'type': 'action'},
@@ -139,8 +138,8 @@ class FscvWin(QtWidgets.QMainWindow):
                         'limits': (0, 9)},
             ]},
             {'name': 'Valve control', 'type': 'group', 'children': [
-                {'name': 'Symphony', 'type': 'list', 'values': self.symphonies.sections(),
-                 'value': 2},
+                {'name': 'Symphony', 'type': 'list', 'values': [NO_SYMPHONY_NAME]},
+                {'name': 'Reload symphonies', 'type': 'action', 'value': None},
                 {'name': 'State', 'type': 'str', 'value': '', 'readonly': True},
             ]},
             ]
@@ -149,9 +148,10 @@ class FscvWin(QtWidgets.QMainWindow):
         self.p = p = Parameter.create(name='gui_parameter_dict', type='group', children=gui_parameter_dict)
 
         # Connect the GUI Buttons to its functions
-        p.param('Run', 'Start').sigActivated.connect(self.start_recording)
-        p.param('Run', 'Stop').sigActivated.connect(self.stop_recording)
+        p.param('Run', START_BTN_NAME).sigActivated.connect(self.start_recording)
+        p.param('Run', STOP_BTN_NAME).sigActivated.connect(self.stop_recording)
         p.param('GUI', 'Load background').sigActivated.connect(self.load_background)
+        p.param('Valve control', 'Reload symphonies').sigActivated.connect(self.load_symphonies)
 
         # Add parameter gui element
         parameter_gui_element = ParameterTree()
@@ -161,21 +161,21 @@ class FscvWin(QtWidgets.QMainWindow):
 
 
         # Set up plotting with multithreading
-        # Current
+        # Current plot
         self.remote_current_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
         self.remote_current_view.pg.setConfigOptions(antialias=True) ## Create a PlotItem in the remote process
         self.remote_current_plot = self.remote_current_view.pg.PlotItem()
         self.remote_current_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to plot
         self.remote_current_view.setCentralItem(self.remote_current_plot)
         current_view_gui_element.addWidget(self.remote_current_view)
-        # command
+        # command plot
         self.remote_command_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
         self.remote_command_view.pg.setConfigOptions(antialias=True) ## Create a PlotItem in the remote process
         self.remote_command_plot = self.remote_command_view.pg.PlotItem()
         self.remote_command_plot._setProxyOptions(deferGetattr=True)  ## speeds up access to plot
         self.remote_command_view.setCentralItem(self.remote_command_plot)
         command_view_gui_element.addWidget(self.remote_command_view)
-        # duck
+        # duck plot
         self.remote_duck_view = pg.widgets.RemoteGraphicsView.RemoteGraphicsView()
         self.remote_duck_view.pg.setConfigOptions(antialias=True) ## Create a PlotItem in the remote process
         self.remote_duck_plot = self.remote_duck_view.pg.PlotItem()
@@ -183,22 +183,32 @@ class FscvWin(QtWidgets.QMainWindow):
         self.remote_duck_view.setCentralItem(self.remote_duck_plot)
         duck_view_gui_element.addWidget(self.remote_duck_view)
 
-        # Create basic image plot
+        # Waterfall plot
         self.im_plot = pg.ImageView()
         self.im_plot.view.setAspectLocked(False)
         image_view_gui_element.addWidget(self.im_plot)
         im_data = np.ones((100, 200)) * np.linspace(-5, 5, 200)
         self.im_plot.setImage(im_data.T)
 
+        # Load symphonies.ini file
+        self.load_symphonies()
+
 
     def keyPressEvent(self, event):
         # Pressing SPACE starts the measurement, q stops
         if event.key() == QtCore.Qt.Key_Space:
-            if self.p.param('Run').param('Start').opts['enabled']:
+            if self.p.param('Run').param(START_BTN_NAME).opts['enabled']:
                 self.start_recording()
         if event.key() == QtCore.Qt.Key_Q:
-            if self.p.param('Run').param('Stop').opts['enabled']:
+            if self.p.param('Run').param(STOP_BTN_NAME).opts['enabled']:
                 self.stop_recording()
+
+
+    def load_symphonies(self):
+        """Loads the valve control pattern from symphonies.ini file"""
+        self.symphonies = configparser.ConfigParser()
+        self.symphonies.read("symphonies.ini")
+        self.p.param('Valve control', 'Symphony').setLimits([NO_SYMPHONY_NAME, *self.symphonies.sections()])
 
     def load_background(self):
         path_today = str(labtools.get_folder_of_the_day(self.config).absolute())
@@ -220,24 +230,25 @@ class FscvWin(QtWidgets.QMainWindow):
         recording timer are inititalized"""
 
         symphony_name = self.p.param('Valve control').param('Symphony').value()
-        self.symphony = self.symphonies[symphony_name]
-        self.chordtimers = []
-        self.chords = []
+        if symphony_name != NO_SYMPHONY_NAME:
+            self.symphony = self.symphonies[symphony_name]
+            self.chordtimers = []
+            self.chords = []
 
-        for k in sorted(self.symphony, reverse=True):
-            if not k.lower().startswith('t-'):
-                continue
+            for k in sorted(self.symphony, reverse=True):
+                chordtime = float(k)*1e3
+                chord = self.symphony[k].strip().replace(' ', '')
 
-            chord = self.symphony[k].strip().replace(' ', '')
-            self.chords.append(chord)
+                self.chords.append(chord)
 
-            chordtime = float(k[2:])*1e3
-            timer = QtCore.QTimer()
-            timer.timeout.connect(self.update_valves)
-            timer.setSingleShot(True)
-            timer.start(chordtime)
-            #print("timer started ", chordtime)
-            self.chordtimers.append(timer)
+                timer = QtCore.QTimer()
+                timer.timeout.connect(self.update_valves)
+                timer.setSingleShot(True)
+                timer.start(int(chordtime))
+                self.chordtimers.append(timer)
+        else:
+            self.symphony = None
+
 
         # Read GUI values
         # U_0 = self.p.param('Config').param('U_0').value()
@@ -251,8 +262,8 @@ class FscvWin(QtWidgets.QMainWindow):
         complevel = int(self.p.param('Data storage').param('Blosc compression level').value())
 
         # Update Gui state
-        self.p.param('Run').param('Start').setOpts(enabled=False)
-        self.p.param('Run').param('Stop').setOpts(enabled=True)
+        self.p.param('Run').param(START_BTN_NAME).setOpts(enabled=False)
+        self.p.param('Run').param(STOP_BTN_NAME).setOpts(enabled=True)
 
         # # Prepare Pulse form
         # base_pre = np.ones(int(T_pre * self.fs)) * U_0
@@ -292,7 +303,7 @@ class FscvWin(QtWidgets.QMainWindow):
         for section in gui_params:
             prms = gui_params[section][1]
             for p in prms:
-                # TODO
+                # TODO check output!
                 #self.grabber.fileh.root.attrs[p.replace(' ', '_')] = prms[p][0]
                 self.grabber.array_scans.attrs[p.replace(' ', '_')] = prms[p][0]
 
@@ -319,11 +330,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
     def set_valves(self, chord):
         """Set the valves to a given chord, """
-        #print('Playing chord ', end='')
-        #print(chord)
         bool_chord = [x=="1" for x in chord]
-        #for i in range(len(self.ecus)):
-        #    pass
 
         if VALVES_CONNECTED:
             for i, ecu in enumerate(self.ecus):
@@ -332,21 +339,6 @@ class FscvWin(QtWidgets.QMainWindow):
                 self.ecus[i].set_enabled(1, bool_chord[i*2])
                 self.ecus[i].set_enabled(2, bool_chord[1+i*2])
 
-        #    for i_ecu, ecu in enumerate(self.ecu_manager.get_all()):
-        #        #print(ecu)
-        #        for channel in [1, 2]:
-        #            i_total = i_ecu * 2 + channel - 1
-        #            if chord[i_total] == "0":
-        #                ecu.disable(channel)
-        #            elif chord[i_total] == "1":
-        #                ecu.enable(channel)
-        #            else:
-        #                print("Error in symphony: ", chord)
-        #    i_ecu += 1
-        #else:
-        #    i_ecu=0
-
-        #actual_chord = chord[:i_ecu*2]
         self.p.param('Valve control').param('State').setValue("%s"%chord)
 
     def update_valves(self):
@@ -435,26 +427,28 @@ class FscvWin(QtWidgets.QMainWindow):
 
     def stop_recording(self):
         """Stop the recording: Update GUI, close file and stop DAQ"""
-        # Disable output of function generator
 
         if AGILENT_CONNECTED:
+            # Switch off function generator output
             self.function_generator.output = False
 
-        self.p.param('Run').param('Start').setOpts(enabled=True)
-        self.p.param('Run').param('Stop').setOpts(enabled=False)
+        self.p.param('Run').param(START_BTN_NAME).setOpts(enabled=True)
+        self.p.param('Run').param(STOP_BTN_NAME).setOpts(enabled=False)
         self.grabber.stop_grab()
         self.gui_timer.stop()
         self.image_timer.stop()
 
-        for timer in self.chordtimers:
-            timer.stop()
+        if self.symphony is not None:
+            # Cancel playing the symphonie
+            for timer in self.chordtimers:
+                timer.stop()
 
-        if self.symphony.get('final_chord') is not None:
-            self.set_valves(self.symphony.get('final_chord'))
+            if self.symphony.get('final_chord') is not None:
+                self.set_valves(self.symphony.get('final_chord'))
 
     def closeEvent(self, event):
         """Window is beeing closed: stop measurement if it is running"""
-        if self.p.param('Run').param('Stop').opts['enabled']:
+        if self.p.param('Run').param(STOP_BTN_NAME).opts['enabled']:
             self.stop_recording()
 
         self.remote_current_view.close()
