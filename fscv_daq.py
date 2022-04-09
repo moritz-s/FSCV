@@ -23,7 +23,6 @@ class NIGrabber:
 
         self.samples_per_scan = samples_per_scan
         self.rate = rate
-        self.last_data = None
         self.n_scans_acquired = 0
         self.running = False
 
@@ -65,9 +64,6 @@ class NIGrabber:
             data = np.random.normal(size=(2, self.samples_per_scan))
             data[1,:50] +=5
 
-        # For access by gui thread
-        self.last_data = data
-
         if not self.running:
             return 0
 
@@ -94,7 +90,6 @@ class NIGrabber:
 
         self.lastUpdate = t_now
 
-        #print('callback. ', self.n_scans_acquired)
         return 0
 
     def start_grabbing(self):
@@ -172,25 +167,10 @@ class MyGui:
         self.grabber.stop_grab()
 
 if __name__ == '__main__':
-    if 0:
-        grabber = NIGrabber(samples_per_scan=1001, rate=200e3)
-        grab_thread = threading.Thread(target=grabber.start_grabbing)
-        grab_thread.start()
+    grabber = NIGrabber(samples_per_scan=1001, rate=200e3)
+    grab_thread = threading.Thread(target=grabber.start_grabbing)
+    grab_thread.start()
 
-        my_gui = MyGui(grabber)
-        gui_thread = threading.Thread(target=my_gui.doMeasurement)
-        gui_thread.start()
-
-
-#from pymeasure.instruments.agilent import Agilent33220A
-#fun = Agilent33220A('USB0::0x0957::0x0407::MY43004373::INSTR')
-
-if 0:
-    from ecu import ECUManager
-
-    manager = ECUManager()
-    for ecu in manager.get_all():
-        print(ecu)
-        ecu.enable(1)
-        time.sleep(2)
-        ecu.disable(1)
+    my_gui = MyGui(grabber)
+    gui_thread = threading.Thread(target=my_gui.doMeasurement)
+    gui_thread.start()
