@@ -147,9 +147,11 @@ class NIGrabber:
         self.task.close()
         self.running = False
         time.sleep(0.005)
+        this_filename = str(self.fileh.filename)
         self.fileh.flush()
         self.fileh.close()
         print('saved: ', self.fileh.filename)
+        return this_filename
 
 class MyGui:
     def __init__(self, grabber):

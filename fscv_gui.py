@@ -30,8 +30,9 @@ import fscv_daq
 
 NO_SYMPHONY_NAME = "None"
 space = " "*20
-STOP_BTN_NAME = space+"Stop"+space
-START_BTN_NAME = space+"Start"+space
+lspace = " "*40
+STOP_BTN_NAME = lspace+"Stop"+lspace
+START_BTN_NAME = lspace+"Start"+lspace
 START_BACKGROUND_BTN_NAME = space+"Measure background"+space
 FINAL_CHORD = "final_chord"
 
@@ -40,6 +41,8 @@ class FscvWin(QtWidgets.QMainWindow):
     def __init__(self):
         # Load config file
         self.config = labtools.getConfig()
+
+        self.is_background = False
         self.datapath = Path(self.config.get('datapath', fallback='data'))
 
         # Load ECU config
@@ -111,10 +114,11 @@ class FscvWin(QtWidgets.QMainWindow):
                 #{'name': 'Line scan period', 'type': 'float', 'value': 0.1, 'siPrefix': True, 'suffix': 's'},
             ]},
             {'name': 'Run', 'type': 'group', 'children': [
-                {'name': START_BACKGROUND_BTN_NAME, 'type': 'action'},
                 {'name': START_BTN_NAME, 'type': 'action'},
                 {'name': STOP_BTN_NAME, 'type': 'action', 'enabled': False},
+                {'name': START_BACKGROUND_BTN_NAME, 'type': 'action'},
                 {'name': 'N scans limit', 'type': 'int', 'value': 0},
+                {'name': 'n scans background', 'type': 'int', 'value': 50, 'limits':(1, 1e4)},
             ]},
 
             {'name': 'GUI', 'type': 'group', 'children': [
@@ -205,6 +209,7 @@ class FscvWin(QtWidgets.QMainWindow):
         self.load_symphonies()
 
 
+
     def keyPressEvent(self, event):
         # Pressing SPACE starts the measurement, q stops
         if event.key() == QtCore.Qt.Key_Space:
@@ -228,10 +233,12 @@ class FscvWin(QtWidgets.QMainWindow):
             self.p.param('Valve control', 'Symphony').setLimits([NO_SYMPHONY_NAME])
             #self.p.param('Valve control', 'Symphony').value()
 
-    def load_background(self):
-        path_today = str(labtools.get_folder_of_the_day(self.config).absolute())
-        bg_filename, _ = QtGui.QFileDialog.getOpenFileName(self, caption='Select background recording',
-                                                    directory=path_today, filter='*.h5')
+    def load_background(self, bg_filename = None):
+
+        if bg_filename is None:
+            path_today = str(labtools.get_folder_of_the_day(self.config).absolute())
+            bg_filename, _ = QtGui.QFileDialog.getOpenFileName(self, caption='Select background recording',
+                                                        directory=path_today, filter='*.h5')
         if bg_filename == '':
             return
 
@@ -247,7 +254,13 @@ class FscvWin(QtWidgets.QMainWindow):
         """ This function starts a new recording. h5 storage, NiDAQ and the
         recording timer are inititalized"""
 
-        symphony_name = self.p.param('Valve control', 'Symphony').value()
+        print(self.is_background)
+
+        if not self.is_background:
+            symphony_name = self.p.param('Valve control', 'Symphony').value()
+        else:
+            symphony_name = NO_SYMPHONY_NAME
+
         if symphony_name != NO_SYMPHONY_NAME:
             try:
                 self.symphony = self.symphonies[symphony_name]
@@ -358,9 +371,14 @@ class FscvWin(QtWidgets.QMainWindow):
             self.function_generator.output = True
 
         #self.lastUpdate = time.perf_counter()
-    def start_background_recording(self):
-        p.param('Run', START_BACKGROUND_BTN_NAME).sigActivated.connect(self.)
 
+    def start_background_recording(self):
+        self.n_scans_pre = self.p.param('Run', 'N scans limit').setOpts(enabled=False)
+        self.n_scans_pre = self.p.param('Run', 'N scans limit').value()
+        self.p.param('Run', 'N scans limit').setValue(self.p.param('Run', 'n scans background').value())
+        
+        self.is_background = True
+        self.start_recording()
 
     def set_valves(self, chord):
         """Set the valves to a given chord, """
@@ -466,9 +484,18 @@ class FscvWin(QtWidgets.QMainWindow):
             # Switch off function generator output
             self.function_generator.output = False
 
+
+        last_filename = self.grabber.stop_grab()
+
+        if self.is_background:
+            self.p.param('Run', 'N scans limit').setValue(self.n_scans_pre)
+            self.p.param('Run', 'N scans limit').setOpts(enabled=True)
+            self.load_background(bg_filename = last_filename)
+            self.is_background = False
+
+
         self.p.param('Run').param(START_BTN_NAME).setOpts(enabled=True)
         self.p.param('Run').param(STOP_BTN_NAME).setOpts(enabled=False)
-        self.grabber.stop_grab()
         self.gui_timer.stop()
         self.image_timer.stop()
 
