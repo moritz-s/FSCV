@@ -32,6 +32,7 @@ NO_SYMPHONY_NAME = "None"
 space = " "*20
 STOP_BTN_NAME = space+"Stop"+space
 START_BTN_NAME = space+"Start"+space
+START_BACKGROUND_BTN_NAME = space+"Measure background"+space
 FINAL_CHORD = "final_chord"
 
 class FscvWin(QtWidgets.QMainWindow):
@@ -110,6 +111,7 @@ class FscvWin(QtWidgets.QMainWindow):
                 #{'name': 'Line scan period', 'type': 'float', 'value': 0.1, 'siPrefix': True, 'suffix': 's'},
             ]},
             {'name': 'Run', 'type': 'group', 'children': [
+                {'name': START_BACKGROUND_BTN_NAME, 'type': 'action'},
                 {'name': START_BTN_NAME, 'type': 'action'},
                 {'name': STOP_BTN_NAME, 'type': 'action', 'enabled': False},
                 {'name': 'N scans limit', 'type': 'int', 'value': 0},
@@ -157,6 +159,8 @@ class FscvWin(QtWidgets.QMainWindow):
         # Connect the GUI Buttons to its functions
         p.param('Run', START_BTN_NAME).sigActivated.connect(self.start_recording)
         p.param('Run', STOP_BTN_NAME).sigActivated.connect(self.stop_recording)
+        p.param('Run', START_BACKGROUND_BTN_NAME).sigActivated.connect(self.start_background_recording)
+
         p.param('GUI', 'Load background').sigActivated.connect(self.load_background)
         p.param('Valve control', 'Reload symphonies').sigActivated.connect(self.load_symphonies)
 
@@ -283,14 +287,14 @@ class FscvWin(QtWidgets.QMainWindow):
         # T_pre = self.p.param('Config').param('Pre ramp time').value()
         # T_pulse = self.p.param('Config').param('Total ramp time').value()
         # T_post = self.p.param('Config').param('Post ramp time').value()
-        self.rate = self.p.param('Config').param('Sampling rate').value()
-        self.samples_per_scan = self.p.param('Config').param('Samples per scan').value()
-        # line_scan_period = self.p.param('Config').param('Line scan period').value()
-        complevel = int(self.p.param('Data storage').param('Blosc compression level').value())
+        self.rate = self.p.param('Config', 'Sampling rate').value()
+        self.samples_per_scan = self.p.param('Config', 'Samples per scan').value()
+        # line_scan_period = self.p.param('Config', 'Line scan period').value()
+        complevel = int(self.p.param('Data storage', 'Blosc compression level').value())
 
         # Update Gui state
-        self.p.param('Run').param(START_BTN_NAME).setOpts(enabled=False)
-        self.p.param('Run').param(STOP_BTN_NAME).setOpts(enabled=True)
+        self.p.param('Run', START_BTN_NAME).setOpts(enabled=False)
+        self.p.param('Run', STOP_BTN_NAME).setOpts(enabled=True)
 
         # # Prepare Pulse form
         # base_pre = np.ones(int(T_pre * self.fs)) * U_0
@@ -299,21 +303,21 @@ class FscvWin(QtWidgets.QMainWindow):
         # out = 5.0 * np.hstack([base_pre, ramp, ramp[::-1], base_post])
         #
         # self.samples_per_scan = len(out)
-        # self.p.param('Monitor').param('samples per scan').setValue(
+        # self.p.param('Monitor', 'samples per scan').setValue(
         #     self.samples_per_scan)
 
         # self.avgFps = 1/line_scan_period
 
         datafile_path = labtools.getNextFile(self.config)
         datafile_folder, datafile_name = os.path.split(datafile_path.absolute())
-        self.p.param('Data storage').param('Data path').setValue(datafile_folder)
-        self.p.param('Data storage').param('Data file').setValue(datafile_name)
+        self.p.param('Data storage', 'Data path').setValue(datafile_folder)
+        self.p.param('Data storage', 'Data file').setValue(datafile_name)
 
         #print('start recording: ', datafile_path.absolute())
         #self.fileh = tb.open_file(datafile_path.absolute().as_posix(), mode='w')
         #self.fileh = tb.open_file(datafile_path, mode='w')
 
-        n_scans_limit = self.p.param('Run').param('N scans limit').value()
+        n_scans_limit = self.p.param('Run', 'N scans limit').value()
         if n_scans_limit == 0:
             # No line limit given, guessing a reasonable total number of scans
             expectedrows = 500
@@ -337,13 +341,13 @@ class FscvWin(QtWidgets.QMainWindow):
         self.grabber.start_grabbing()
 
         # Line and duck plot timer
-        gui_period_ms = self.p.param('GUI').param('GUI update period').value()*1e3
+        gui_period_ms = self.p.param('GUI', 'GUI update period').value()*1e3
         self.gui_timer = QtCore.QTimer()
         self.gui_timer.timeout.connect(self.update)
         self.gui_timer.start(int(gui_period_ms))
 
         # Image timer
-        image_period_ms = self.p.param('GUI').param('Waterfall update period').value()*1e3
+        image_period_ms = self.p.param('GUI', 'Waterfall update period').value()*1e3
         self.image_timer = QtCore.QTimer()
         self.image_timer.timeout.connect(self.update_waterfall)
         self.image_timer.start(int(image_period_ms))
@@ -354,6 +358,9 @@ class FscvWin(QtWidgets.QMainWindow):
             self.function_generator.output = True
 
         #self.lastUpdate = time.perf_counter()
+    def start_background_recording(self):
+        p.param('Run', START_BACKGROUND_BTN_NAME).sigActivated.connect(self.)
+
 
     def set_valves(self, chord):
         """Set the valves to a given chord, """
@@ -375,7 +382,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
     def update_waterfall(self):
         """Update the waterfall plot"""
-        if self.p.param('GUI').param('Live waterfall').value():
+        if self.p.param('GUI', 'Live waterfall').value():
             n_limit = self.p.param('GUI').param('Waterfall n scans').value()
             currents = np.array(self.grabber.array_scans)[-n_limit:]
 
@@ -407,7 +414,7 @@ class FscvWin(QtWidgets.QMainWindow):
             print('DAQ failed: empty data')
             return
 
-        if self.p.param('GUI').param('Live background subtraction').value():
+        if self.p.param('GUI', 'Live background subtraction').value():
             try:
                 current -= self.background_current
             except ValueError:
@@ -431,7 +438,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
         #self.avgFps = self.avgFps * 0.9 + fps * 0.1
 
-        #self.p.param('Monitor').param('Aquisition frequency').setValue(self.avgFps)
+        #self.p.param('Monitor', 'Aquisition frequency').setValue(self.avgFps)
         # Update GUI values
         try:
             self.p.param('Monitor').param('Aquisition period').setValue(self.grabber.delta_t)
@@ -439,15 +446,15 @@ class FscvWin(QtWidgets.QMainWindow):
             self.p.param('Monitor').param('Aquisition period max').setValue(self.grabber.delta_t_max)
         except TypeError:
             # Not yet calculated
-            self.p.param('Monitor').param('Aquisition period').setValue(0)
-            self.p.param('Monitor').param('Aquisition period min').setValue(0)
-            self.p.param('Monitor').param('Aquisition period max').setValue(0)
+            self.p.param('Monitor', 'Aquisition period').setValue(0)
+            self.p.param('Monitor', 'Aquisition period min').setValue(0)
+            self.p.param('Monitor', 'Aquisition period max').setValue(0)
 
         n_scans_acquired = self.grabber.n_scans_acquired
-        self.p.param('Monitor').param('N scans acquired').setValue(n_scans_acquired)
+        self.p.param('Monitor', 'N scans acquired').setValue(n_scans_acquired)
 
         # Check if measurement is finished
-        n_scans_limit = self.p.param('Run').param('N scans limit').value()
+        n_scans_limit = self.p.param('Run', 'N scans limit').value()
         if n_scans_limit != 0:
             if n_scans_acquired >= n_scans_limit:
                 self.stop_recording()
@@ -475,7 +482,7 @@ class FscvWin(QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         """Window is beeing closed: stop measurement if it is running"""
-        if self.p.param('Run').param(STOP_BTN_NAME).opts['enabled']:
+        if self.p.param('Run', STOP_BTN_NAME).opts['enabled']:
             self.stop_recording()
 
         self.remote_current_view.close()
