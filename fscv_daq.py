@@ -67,14 +67,14 @@ class NIGrabber:
         if not self.running:
             return 0
 
+        t_now = time.perf_counter() - self.t0
         # Append new data to data storage
-        self.array_ts.append(np.array([time.time()])[np.newaxis])
+        self.array_ts.append(np.array([t_now])[np.newaxis])
         self.array_command.append(data[0][:, np.newaxis])
         self.array_scans.append(data[1][:, np.newaxis])
 
         self.n_scans_acquired += 1
 
-        t_now = time.perf_counter()
 
         if self.n_scans_acquired > 1:
             self.delta_t = t_now - self.lastUpdate
@@ -116,7 +116,7 @@ class NIGrabber:
 
             self.task.triggers.start_trigger.retriggerable = True
 
-            self.task.start()
+
         else:
             class phantom_data_task:
                 """Single use phantom data generator."""
@@ -140,17 +140,31 @@ class NIGrabber:
                                              acuisition_period_sec=self.samples_per_scan/self.rate)
 
             phantom_thread = threading.Thread(target=task_phantom.acquire_random_data)
-            phantom_thread.start()
-            self.task = task_phantom
+            self.task_phantom = task_phantom
+            self.task = phantom_thread
+
+        # Save start time
+        self.array_ts.attrs['start_time'] = time.time()
+        self.array_ts.attrs['start_time_str'] = time.ctime()
+        self.t0 = time.perf_counter()
+
+        # Start grabbing
+        self.task.start()
+
 
     def stop_grab(self):
-        self.task.close()
         self.running = False
-        time.sleep(0.005)
+
         this_filename = str(self.fileh.filename)
         self.fileh.flush()
         self.fileh.close()
         print('saved: ', self.fileh.filename)
+
+        if REAL_DATA:
+            self.task.close()
+        else:
+            self.task_phantom.close()
+
         return this_filename
 
 class MyGui:

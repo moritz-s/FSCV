@@ -125,7 +125,7 @@ class FscvWin(QtWidgets.QMainWindow):
                 {'name': 'GUI update period', 'type': 'float', 'value': 0.1,
                          'siPrefix': True, 'suffix': 's', 'limits':(0.02, 1e2)},
                 {'name': 'Live waterfall', 'type': 'bool', 'value': True},
-                {'name': 'Waterfall update period', 'type': 'float', 'value': 1,
+                {'name': 'Waterfall update period', 'type': 'float', 'value': 0.3,
                          'siPrefix': True, 'suffix': 's', 'limits':(0.05, 1e2)},
                 {'name': 'Waterfall n scans', 'type': 'int', 'value': 600, 'limits':(1, 1e4)},
                 {'name': 'Live background subtraction', 'type': 'bool', 'value': False, 'readonly': True},
@@ -201,6 +201,7 @@ class FscvWin(QtWidgets.QMainWindow):
         # Waterfall plot
         self.im_plot = pg.ImageView()
         self.im_plot.view.setAspectLocked(False)
+        self.im_plot.setColorMap(pg.colormap.get('viridis'))
         image_view_gui_element.addWidget(self.im_plot)
         im_data = np.ones((100, 200)) * np.linspace(-5, 5, 200)
         self.im_plot.setImage(im_data.T)
@@ -213,10 +214,10 @@ class FscvWin(QtWidgets.QMainWindow):
     def keyPressEvent(self, event):
         # Pressing SPACE starts the measurement, q stops
         if event.key() == QtCore.Qt.Key_Space:
-            if self.p.param('Run').param(START_BTN_NAME).opts['enabled']:
+            if self.p.param('Run', START_BTN_NAME).opts['enabled']:
                 self.start_recording()
         if event.key() == QtCore.Qt.Key_Q:
-            if self.p.param('Run').param(STOP_BTN_NAME).opts['enabled']:
+            if self.p.param('Run', STOP_BTN_NAME).opts['enabled']:
                 self.stop_recording()
 
 
@@ -250,85 +251,77 @@ class FscvWin(QtWidgets.QMainWindow):
         self.p.param('GUI', 'Live background subtraction').setValue(True)
         self.p.param('GUI', 'Live background subtraction').setOpts(readonly=False)
 
+    def play_symphony(self, symphony_name):
+        """Parsing of .ini file, creation of chord list and timers"""
+        self.symphony = self.symphonies[symphony_name]
+        self.chordtimers = []
+        self.chords = []
+
+        try:
+            for k in sorted(self.symphony, reverse=True):
+                if k == FINAL_CHORD:
+                    # Final chord is not appended to the list.
+                    continue
+
+                chord = self.symphony[k].strip()
+                chordtime = float(k)*1e3
+
+                if chord.replace('0', '').replace('1', '').strip() != '':
+                    raise ValueError('Invalid character in chord: %s . Only 0 and 1 allowed.'%chord)
+                self.chords.append(chord)
+
+                timer = QtCore.QTimer()
+                timer.timeout.connect(self.next_chord)
+                timer.setSingleShot(True)
+                timer.start(int(chordtime))
+                self.chordtimers.append(timer)
+        except ValueError as e:
+            for timer in self.chordtimers:
+                timer.stop()
+            raise e
+
     def start_recording(self):
         """ This function starts a new recording. h5 storage, NiDAQ and the
         recording timer are inititalized"""
 
-        print(self.is_background)
-
+        # Ignore symphony in background mode
         if not self.is_background:
             symphony_name = self.p.param('Valve control', 'Symphony').value()
         else:
             symphony_name = NO_SYMPHONY_NAME
 
+        # Load symphony
         if symphony_name != NO_SYMPHONY_NAME:
+            # Store symphony
             try:
-                self.symphony = self.symphonies[symphony_name]
-                self.chordtimers = []
-                self.chords = []
-
-                for k in sorted(self.symphony, reverse=True):
-                    chord = self.symphony[k].strip()#.replace(' ', '')
-                    if chord.replace('0', '').replace('1', '').strip() != '':
-                        raise ValueError('Invalid character in chord: %s . Only 0 and 1 allowed.'%chord)
-                    if k == FINAL_CHORD:
-                        # Final chord is not appended to the list.
-                        continue
-                    self.chords.append(chord)
-                    
-                    chordtime = float(k)*1e3
-                    timer = QtCore.QTimer()
-                    timer.timeout.connect(self.next_chord)
-                    timer.setSingleShot(True)
-                    timer.start(int(chordtime))
-                    self.chordtimers.append(timer)
-
+                self.play_symphony(symphony_name)
             except ValueError as e:
                 pg.QtGui.QMessageBox.critical(self, 
                         "Parsing error in symphony: %s"%symphony_name+space,
                         "In section %s"%symphony_name+'\n'+str(e))
                 self.symphony = None
                 return
-
         else:
             self.symphony = None
 
 
-        # Read GUI values
-        # U_0 = self.p.param('Config').param('U_0').value()
-        # U_1 = self.p.param('Config').param('U_1').value()
-        # T_pre = self.p.param('Config').param('Pre ramp time').value()
-        # T_pulse = self.p.param('Config').param('Total ramp time').value()
-        # T_post = self.p.param('Config').param('Post ramp time').value()
+        # Read gui values
         self.rate = self.p.param('Config', 'Sampling rate').value()
         self.samples_per_scan = self.p.param('Config', 'Samples per scan').value()
-        # line_scan_period = self.p.param('Config', 'Line scan period').value()
         complevel = int(self.p.param('Data storage', 'Blosc compression level').value())
 
         # Update Gui state
         self.p.param('Run', START_BTN_NAME).setOpts(enabled=False)
+        self.p.param('Run', START_BACKGROUND_BTN_NAME).setOpts(enabled=False)
         self.p.param('Run', STOP_BTN_NAME).setOpts(enabled=True)
-
-        # # Prepare Pulse form
-        # base_pre = np.ones(int(T_pre * self.fs)) * U_0
-        # base_post = np.ones(int(T_post * self.fs)) * U_0
-        # ramp = np.linspace(U_0, U_1, int(T_pulse/2 * self.fs))
-        # out = 5.0 * np.hstack([base_pre, ramp, ramp[::-1], base_post])
-        #
-        # self.samples_per_scan = len(out)
-        # self.p.param('Monitor', 'samples per scan').setValue(
-        #     self.samples_per_scan)
-
-        # self.avgFps = 1/line_scan_period
+        self.p.param('Config', 'Sampling rate').setOpts(enabled=False)
+        self.p.param('Config', 'Samples per scan').setOpts(enabled=False)
+        self.p.param('Data storage', 'Blosc compression level').setOpts(enabled=False)
 
         datafile_path = labtools.getNextFile(self.config)
         datafile_folder, datafile_name = os.path.split(datafile_path.absolute())
         self.p.param('Data storage', 'Data path').setValue(datafile_folder)
         self.p.param('Data storage', 'Data file').setValue(datafile_name)
-
-        #print('start recording: ', datafile_path.absolute())
-        #self.fileh = tb.open_file(datafile_path.absolute().as_posix(), mode='w')
-        #self.fileh = tb.open_file(datafile_path, mode='w')
 
         n_scans_limit = self.p.param('Run', 'N scans limit').value()
         if n_scans_limit == 0:
@@ -347,9 +340,17 @@ class FscvWin(QtWidgets.QMainWindow):
         for section in gui_params:
             prms = gui_params[section][1]
             for p in prms:
-                # TODO check output!
-                #self.grabber.fileh.root.attrs[p.replace(' ', '_')] = prms[p][0]
-                self.grabber.array_scans.attrs[p.replace(' ', '_')] = prms[p][0]
+                if p in [START_BACKGROUND_BTN_NAME , START_BTN_NAME, STOP_BTN_NAME]:
+                    continue
+                self.grabber.array_ts.attrs[p.replace(' ', '_')] = prms[p][0]
+
+        if symphony_name != NO_SYMPHONY_NAME:
+            for k in sorted(self.symphony, reverse=True):
+                if k == FINAL_CHORD:
+                    continue
+                chord = self.symphony[k].strip()
+                chordtime = int(float(k)*1e3)
+                self.grabber.array_ts.attrs['valve_pattern_at_%i_ms'%chordtime] = chord
 
         self.grabber.start_grabbing()
 
@@ -369,14 +370,13 @@ class FscvWin(QtWidgets.QMainWindow):
         # Activate output of function generator
         if AGILENT_CONNECTED:
             self.function_generator.output = True
-
         #self.lastUpdate = time.perf_counter()
 
     def start_background_recording(self):
         self.n_scans_pre = self.p.param('Run', 'N scans limit').setOpts(enabled=False)
         self.n_scans_pre = self.p.param('Run', 'N scans limit').value()
-        self.p.param('Run', 'N scans limit').setValue(self.p.param('Run', 'n scans background').value())
-        
+        self.p.param('Run', 'N scans limit').setValue(self.p.param('Run',
+                                                                   'n scans background').value())
         self.is_background = True
         self.start_recording()
 
@@ -391,7 +391,7 @@ class FscvWin(QtWidgets.QMainWindow):
                 self.ecus[i].set_enabled(1, bool_chord[i*2])
                 self.ecus[i].set_enabled(2, bool_chord[1+i*2])
 
-        self.p.param('Valve control').param('State').setValue("%s"%chord)
+        self.p.param('Valve control', 'State').setValue("%s"%chord.replace(' ', '_'))
 
     def next_chord(self):
         """Update all the valves to the next chord in the symphony"""
@@ -401,18 +401,18 @@ class FscvWin(QtWidgets.QMainWindow):
     def update_waterfall(self):
         """Update the waterfall plot"""
         if self.p.param('GUI', 'Live waterfall').value():
-            n_limit = self.p.param('GUI').param('Waterfall n scans').value()
+            n_limit = self.p.param('GUI', 'Waterfall n scans').value()
             currents = np.array(self.grabber.array_scans)[-n_limit:]
 
-            if self.p.param('GUI').param('Live background subtraction').value():
+            if self.p.param('GUI', 'Live background subtraction').value():
                 try:
                     currents -= self.background_current
                 except ValueError:
                     # Possibly number of samples per scan changed
                     self.background_current = None
-                    self.p.param('GUI').param('Live background subtraction').setValue(False)
-                    self.p.param('GUI').param('Live background subtraction').setOpts(readonly=True)
-                    self.p.param('GUI').param('Background file').setValue('Cleared')
+                    self.p.param('GUI', 'Live background subtraction').setValue(False)
+                    self.p.param('GUI', 'Live background subtraction').setOpts(readonly=True)
+                    self.p.param('GUI', 'Background file').setValue('Cleared')
                     return
 
             self.im_plot.setImage(currents,
@@ -438,9 +438,9 @@ class FscvWin(QtWidgets.QMainWindow):
             except ValueError:
                 # Possibly number of samples per scan changed
                 self.background_current = None
-                self.p.param('GUI').param('Background file').setValue('Cleared')
-                self.p.param('GUI').param('Live background subtraction').setValue(False)
-                self.p.param('GUI').param('Live background subtraction').setOpts(readonly=True)
+                self.p.param('GUI', 'Background file').setValue('Cleared')
+                self.p.param('GUI', 'Live background subtraction').setValue(False)
+                self.p.param('GUI', 'Live background subtraction').setOpts(readonly=True)
                 return
 
         self.remote_current_plot.plot(current, clear=True, _callSync='off')
@@ -459,9 +459,9 @@ class FscvWin(QtWidgets.QMainWindow):
         #self.p.param('Monitor', 'Aquisition frequency').setValue(self.avgFps)
         # Update GUI values
         try:
-            self.p.param('Monitor').param('Aquisition period').setValue(self.grabber.delta_t)
-            self.p.param('Monitor').param('Aquisition period min').setValue(self.grabber.delta_t_min)
-            self.p.param('Monitor').param('Aquisition period max').setValue(self.grabber.delta_t_max)
+            self.p.param('Monitor', 'Aquisition period').setValue(self.grabber.delta_t)
+            self.p.param('Monitor', 'Aquisition period min').setValue(self.grabber.delta_t_min)
+            self.p.param('Monitor', 'Aquisition period max').setValue(self.grabber.delta_t_max)
         except TypeError:
             # Not yet calculated
             self.p.param('Monitor', 'Aquisition period').setValue(0)
@@ -480,30 +480,39 @@ class FscvWin(QtWidgets.QMainWindow):
     def stop_recording(self):
         """Stop the recording: Update GUI, close file and stop DAQ"""
 
+        # Switch off function generator output
         if AGILENT_CONNECTED:
-            # Switch off function generator output
             self.function_generator.output = False
 
-
+        # Stop recording and close file
         last_filename = self.grabber.stop_grab()
 
+        # If background recording, use result for background subtraction in plots
         if self.is_background:
             self.p.param('Run', 'N scans limit').setValue(self.n_scans_pre)
             self.p.param('Run', 'N scans limit').setOpts(enabled=True)
             self.load_background(bg_filename = last_filename)
             self.is_background = False
 
+        # Update gui state
+        self.p.param('Run', START_BTN_NAME).setOpts(enabled=True)
+        self.p.param('Run', START_BACKGROUND_BTN_NAME).setOpts(enabled=True)
+        self.p.param('Run', STOP_BTN_NAME).setOpts(enabled=False)
+        self.p.param('Config', 'Sampling rate').setOpts(enabled=True)
+        self.p.param('Config', 'Samples per scan').setOpts(enabled=True)
+        self.p.param('Data storage',
+                     'Blosc compression level').setOpts(enabled=True)
 
-        self.p.param('Run').param(START_BTN_NAME).setOpts(enabled=True)
-        self.p.param('Run').param(STOP_BTN_NAME).setOpts(enabled=False)
+        # Stop timers
         self.gui_timer.stop()
         self.image_timer.stop()
 
+        # Stop symphony and apply final chord
         if self.symphony is not None:
-            # Cancel playing the symphonie
+            # Stop all timers
             for timer in self.chordtimers:
                 timer.stop()
-
+            # Apply final chord
             if self.symphony.get(FINAL_CHORD) is not None:
                 self.set_valves(self.symphony.get(FINAL_CHORD))
 
