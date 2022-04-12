@@ -74,7 +74,8 @@ class FscvWin(QtWidgets.QMainWindow):
                     print(ecu_error)
                     ecu_errors.append(ecu_error)
             if ecu_errors != []:
-                pg.QtGui.QMessageBox.critical(self, "Valve ECU connection error", str(ecu_errors))
+                #pg.QtGui.QMessageBox.critical(self, "Valve ECU connection error", str(ecu_errors))
+                print("Valve ECU connection error", str(ecu_errors))
 
 
 
@@ -165,7 +166,7 @@ class FscvWin(QtWidgets.QMainWindow):
         p.param('Run', STOP_BTN_NAME).sigActivated.connect(self.stop_recording)
         p.param('Run', START_BACKGROUND_BTN_NAME).sigActivated.connect(self.start_background_recording)
 
-        p.param('GUI', 'Load background').sigActivated.connect(self.load_background)
+        p.param('GUI', 'Load background').sigActivated.connect(self.load_background_open_file)
         p.param('Valve control', 'Reload symphonies').sigActivated.connect(self.load_symphonies)
 
         # Add parameter gui element
@@ -234,15 +235,16 @@ class FscvWin(QtWidgets.QMainWindow):
             self.p.param('Valve control', 'Symphony').setLimits([NO_SYMPHONY_NAME])
             #self.p.param('Valve control', 'Symphony').value()
 
-    def load_background(self, bg_filename = None):
-
-        if bg_filename is None:
-            path_today = str(labtools.get_folder_of_the_day(self.config).absolute())
-            bg_filename, _ = QtGui.QFileDialog.getOpenFileName(self, caption='Select background recording',
-                                                        directory=path_today, filter='*.h5')
+    def load_background_open_file(self):
+        path_today = str(labtools.get_folder_of_the_day(self.config).absolute())
+        bg_filename, _ = QtGui.QFileDialog.getOpenFileName(self, caption='Select background recording',
+                                                               directory=path_today, filter='*.h5')
         if bg_filename == '':
             return
 
+        self.load_background(bg_filename=bg_filename)
+
+    def load_background(self, bg_filename):
         with tb.open_file(bg_filename, mode='r') as bg_file:
             self.background_current = np.mean(bg_file.root.array_scans, 0)
 
