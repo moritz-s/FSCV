@@ -32,7 +32,12 @@ datapath = C:\data
 ```
 
 ## Manifold valve control (symphonies)
-example
+A manifold with 8 valves is controlled. The valves are programmed with a .ini file.
+Syntax example:
+
+3 = 0010 0000 (3 seconds after start: valve number 3 is opened, all others are closed)
+
+Example symphony.ini file:
 ```dosini
 [DEFAULT]
 # Default chords are applied in every symphony
