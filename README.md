@@ -31,7 +31,7 @@ To set the data folder use a config.ini file, e.g.:
 datapath = C:\data
 ```
 
-## Manifold controll (symphonies)
+## Manifold valve control (symphonies)
 example
 ```dosini
 [DEFAULT]
