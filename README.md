@@ -2,7 +2,11 @@
 
 ![til](./fscv-gui.gif)
 
-A GUI to perform Fast Scanning Cyclic Voltammetry (FSCV). It uses Ni Hardware for data acquisition (Ni-PXIe 1062Q) and a NPI VA-10x amplifier.
+A GUI to perform Fast Scanning Cyclic Voltammetry (FSCV).
+The GUI integrates the following Hardware:
+  - Ni Hardware for data acquisition (Ni-PXIe 1062Q) connected to ![NPI VA-10x](https://www.npielectronic.com/product/va-10/) amplifier. (via ![nidaqmx-python](https://nidaqmx-python.readthedocs.io/en/latest/))
+  - Agilent 33220A (via ![PyMeasure](https://pymeasure.readthedocs.io/en/latest/))
+  - Microfluidic flow cell by ![Memetis manifold](https://www.memetis.com/) controlled via ![ECU-P](https://gitlab.com/memetis/ecu-p/python)
 
 ## Requirements
 General requirements:
@@ -27,7 +31,7 @@ To set the data folder use a config.ini file, e.g.:
 datapath = C:\data
 ```
 
-## Valve pattern syntax (symphonies)
+## Manifold controll (symphonies)
 example
 ```dosini
 [DEFAULT]
